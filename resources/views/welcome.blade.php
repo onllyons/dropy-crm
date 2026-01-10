@@ -45,7 +45,7 @@
 
                 <main class="p-4 md:p-6">
                     <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                        <h1 class="text-3xl font-semibold">Hello</h1>
+                        <h1 class="text-3xl font-semibold">hello world</h1>
                         <p class="mt-2 text-slate-600">Aici pornim CRM-ul tau. Sidebar si topbar sunt responsive.</p>
                     </div>
 

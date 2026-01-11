@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', function () {
-    return view('welcome');
+    $userCount = \DB::table('users')->count();
+    return view('welcome', ['userCount' => $userCount]);
 });
 
 Route::get('/models', function () {

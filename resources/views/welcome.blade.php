@@ -19,7 +19,7 @@
                         <p class="mt-2 text-slate-600">Aici pornim CRM-ul tau. Sidebar si topbar sunt responsive.</p>
                     </div>
 
-                    <div class="mt-6 grid gap-4 md:grid-cols-3">
+                    <div class="mt-6 grid gap-4 md:grid-cols-4">
                         <div class="rounded-2xl border border-slate-200 bg-white p-5">
                             <div class="text-sm font-semibold text-slate-700">Leads</div>
                             <div class="mt-3 text-2xl font-semibold">24</div>
@@ -31,6 +31,10 @@
                         <div class="rounded-2xl border border-slate-200 bg-white p-5">
                             <div class="text-sm font-semibold text-slate-700">Deals</div>
                             <div class="mt-3 text-2xl font-semibold">$12,300</div>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 bg-white p-5">
+                            <div class="text-sm font-semibold text-slate-700">Users</div>
+                            <div class="mt-3 text-2xl font-semibold">{{ $userCount ?? 0 }}</div>
                         </div>
                     </div>
                 </main>

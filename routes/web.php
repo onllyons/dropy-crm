@@ -16,3 +16,11 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return view('welcome');
 });
+
+Route::get('/models', function () {
+    return view('models');
+});
+
+Route::get('/datatables', function () {
+    return view('datatables');
+});

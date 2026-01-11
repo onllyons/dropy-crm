@@ -1,0 +1,41 @@
+/* Dropy custom styles */
+.nav-brand {
+    border: 1px solid #e1e7ef;
+    padding: 8px 10px;
+    margin: 10px;
+    border-radius: 0.5rem;
+}
+
+.nav-menu {
+    border: 1px solid #e1e7ef;
+    padding: 8px 10px;
+    margin: 10px;
+    border-radius: 0.5rem;
+}
+
+.nav-accent {
+    width: 35%;
+    height: 8px;
+    background: #0e172a;
+    position: absolute;
+    top: -4px;
+    left: calc(50% - 15%);
+    border-radius: 6px;
+    border: 1px solid #286dff;
+}
+
+.nav-logout {
+    position: absolute;
+    bottom: 12px;
+    left: 10px;
+    right: 10px;
+}
+
+@media (min-width: 768px) {
+    .sidebar-fixed {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+    }
+}

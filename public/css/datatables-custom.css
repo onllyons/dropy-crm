@@ -1,0 +1,115 @@
+/* Custom DataTables styles (no external variables) */
+.dataTables_wrapper {
+    font-size: 14px;
+    color: #0f172a;
+}
+
+.dataTables_wrapper .dataTables_filter {
+    margin-bottom: 0.6rem;
+}
+
+.dataTables_wrapper .dataTables_filter input {
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    background: #ffffff;
+    color: #0f172a;
+}
+
+.dataTables_wrapper .dataTables_length select {
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    background: #ffffff;
+    color: #0f172a;
+}
+
+.dataTables_wrapper .dt-buttons .dt-button {
+    background: #f9f9f9 !important;
+    border: 1px solid #d0d7e0 !important;
+    border-radius: 0.5rem;
+    color: #000000;
+    margin-right: 0rem;
+    padding: 0.3rem 0.4rem!important;
+}
+
+.dt-buttons {
+    padding-left: 0.9rem;
+}
+
+.dataTables_wrapper .dt-buttons .dt-button:hover {
+    border: 1px solid #d0d7e0 !important;
+    background: #dfdfdf!important;
+    filter: progid:DXImageTransform.Microsoft.gradient(GradientType=0,StartColorStr="rgba(153, 153, 153, 0.1)", EndColorStr="rgba(0, 0, 0, 0.1)");
+}
+
+table.dataTable {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+table.dataTable thead th {
+    background: #f8fafc;
+    color: #0f172a;
+    font-weight: 600;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+table.dataTable tbody td {
+    border-bottom: 1px solid #e2e8f0;
+    color: #334155;
+    padding: 0.6rem 0.75rem;
+}
+
+table.dataTable tbody tr:nth-child(odd) {
+    background: #ffffff;
+}
+
+table.dataTable tbody tr:nth-child(even) {
+    background: #f8fafc;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 0.25rem 0.7rem;
+    margin-left: 0.35rem;
+    color: #334155 !important;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: #e2e8f0 !important;
+    border-color: #94a3b8;
+    color: #0f172a !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: #0f172a !important;
+    border-color: #0f172a !important;
+    color: #ffffff !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+table.dataTable>thead>tr>th, table.dataTable>thead>tr>td {
+    padding: 10px;
+    border-bottom: 1px solid rgb(179 179 179 / 43%)!important;
+}
+table.dataTable.row-border>tbody>tr>th, table.dataTable.row-border>tbody>tr>td, table.dataTable.display>tbody>tr>th, table.dataTable.display>tbody>tr>td {
+    border-top: none !important;
+}
+table.dataTable.no-footer {
+    border-bottom: none !important;
+}
+.dataTables_wrapper .dataTables_paginate {
+    padding-top: 2em!important;
+}
+.dataTables_wrapper .dataTables_info {
+    padding-top: 1.755em !important;
+}

@@ -10,7 +10,14 @@
         </div>
         <div class="flex items-center gap-3">
             <input class="hidden w-64 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm md:block" type="text" placeholder="Search..." />
-            <div class="h-9 w-9 rounded-full bg-slate-200"></div>
+            <button id="offcanvasOpen" class="user-card-top" type="button" aria-label="Open account panel">
+                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+                    {{ strtoupper(substr(Auth::user()->username ?? 'U', 0, 1)) }}
+                </div>
+                <div class="hidden max-w-[10ch] truncate text-sm font-semibold text-slate-700 md:block">
+                    {{ Auth::user()->username ?? 'User' }}
+                </div>
+            </button>
         </div>
     </div>
 </header>

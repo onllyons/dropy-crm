@@ -7,12 +7,12 @@
 
     </head>
     <body class="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900">
-        <div class="min-h-screen md:flex">
+        <div class="min-h-screen flex">
             <x-left-nav />
 
             <div id="sidebarOverlay" class="fixed inset-0 z-30 hidden bg-slate-900/40 md:hidden"></div>
 
-            <div class="content-offset flex-1">
+            <div class="flex-1 md:ml-64">
                 <x-top-nav title="DataTables" />
 
                 <main class="p-4 md:p-6">
@@ -125,6 +125,7 @@
         </div>
 
         <x-script-components />
+        <x-offcanvas-right />
         <x-script-datatables />
 
         <script>

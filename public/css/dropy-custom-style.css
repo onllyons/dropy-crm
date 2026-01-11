@@ -16,26 +16,25 @@
 .nav-accent {
     width: 35%;
     height: 8px;
-    background: #0e172a;
+    background: #e1e7ef;
     position: absolute;
     top: -4px;
     left: calc(50% - 15%);
     border-radius: 6px;
-    border: 1px solid #286dff;
 }
 
-.nav-logout {
-    position: absolute;
-    bottom: 12px;
-    left: 10px;
-    right: 10px;
+.sidebar-inner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
-@media (min-width: 768px) {
-    .sidebar-fixed {
-        position: fixed;
-        top: 0;
-        bottom: 0;
-        left: 0;
-    }
+.user-card-top {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    background: #ffffff;
 }

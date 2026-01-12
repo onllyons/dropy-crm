@@ -15,6 +15,10 @@
                         <i class="fa-solid fa-house mr-2"></i>
                         Dashboard
                     </a>
+                    <a class="{{ request()->is('users') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/users') }}">
+                        <i class="fa-solid fa-user mr-2"></i>
+                        Users
+                    </a>
                     <a class="{{ request()->is('course') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/course') }}">
                         <i class="fa-solid fa-book mr-2"></i>
                         Course

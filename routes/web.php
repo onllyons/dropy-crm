@@ -42,6 +42,11 @@ Route::middleware('auth')->group(function () {
         $userStats = null;
         $recentUsers = collect();
         $levelDistribution = collect();
+        $newToday = 0;
+        $newWeek = 0;
+        $newMonth = 0;
+        $newYear = 0;
+        $debug = null;
 
         try {
             $userStats = \DB::table('users')
@@ -49,23 +54,56 @@ Route::middleware('auth')->group(function () {
                 ->selectRaw('SUM(CASE WHEN verified > 0 THEN 1 ELSE 0 END) as verified')
                 ->selectRaw('SUM(CASE WHEN byGoogle > 0 THEN 1 ELSE 0 END) as google')
                 ->selectRaw('SUM(CASE WHEN appleUser > 0 THEN 1 ELSE 0 END) as apple')
-                ->selectRaw('SUM(CASE WHEN profileAccess > 0 THEN 1 ELSE 0 END) as profile_access')
-                ->selectRaw("SUM(CASE WHEN email IS NULL OR email = '' THEN 1 ELSE 0 END) as missing_email")
-                ->selectRaw("SUM(CASE WHEN bio IS NULL OR bio = '' THEN 1 ELSE 0 END) as missing_bio")
-                ->selectRaw("SUM(CASE WHEN image IS NULL OR image = '' THEN 1 ELSE 0 END) as missing_image")
                 ->first();
+
+            $newToday = \DB::table('users')
+                ->whereRaw('DATE(FROM_UNIXTIME(`time`)) = CURDATE()')
+                ->count();
+
+            $newWeek = \DB::table('users')
+                ->whereRaw('YEARWEEK(FROM_UNIXTIME(`time`), 1) = YEARWEEK(CURDATE(), 1)')
+                ->count();
+
+            $newMonth = \DB::table('users')
+                ->whereRaw('YEAR(FROM_UNIXTIME(`time`)) = YEAR(CURDATE())')
+                ->whereRaw('MONTH(FROM_UNIXTIME(`time`)) = MONTH(CURDATE())')
+                ->count();
+
+            $newYear = \DB::table('users')
+                ->whereRaw('YEAR(FROM_UNIXTIME(`time`)) = YEAR(CURDATE())')
+                ->count();
+
+            $debugDb = \DB::selectOne('SELECT NOW() as db_now, CURDATE() as db_curdate, @@session.time_zone as db_session_tz, @@system_time_zone as db_system_tz');
+            $timeStats = \DB::selectOne('SELECT MAX(`time`) as max_time, MIN(`time`) as min_time, FROM_UNIXTIME(MAX(`time`)) as max_time_dt, FROM_UNIXTIME(MIN(`time`)) as min_time_dt FROM users');
+            $todayCheck = \DB::selectOne('SELECT COUNT(*) as count FROM users WHERE DATE(FROM_UNIXTIME(`time`)) = CURDATE()');
+
+            $debug = [
+                'php_now' => now()->toDateTimeString(),
+                'php_tz' => now()->timezoneName,
+                'php_utc_now' => now('UTC')->toDateTimeString(),
+                'db_now' => $debugDb->db_now ?? null,
+                'db_curdate' => $debugDb->db_curdate ?? null,
+                'db_session_tz' => $debugDb->db_session_tz ?? null,
+                'db_system_tz' => $debugDb->db_system_tz ?? null,
+                'max_time' => $timeStats->max_time ?? null,
+                'max_time_dt' => $timeStats->max_time_dt ?? null,
+                'min_time' => $timeStats->min_time ?? null,
+                'min_time_dt' => $timeStats->min_time_dt ?? null,
+                'db_today_count' => $todayCheck->count ?? null,
+            ];
 
             $recentUsers = \DB::table('users')
                 ->select('id', 'username', 'email', 'level', 'verified', 'time')
-                ->orderByDesc('id')
-                ->limit(10)
+                ->selectRaw('FROM_UNIXTIME(`time`) as time_label')
+                ->orderByDesc('time')
+                ->limit(200)
                 ->get();
 
             $levelDistribution = \DB::table('users')
                 ->select('level', \DB::raw('COUNT(*) as count'))
                 ->groupBy('level')
-                ->orderByDesc('count')
-                ->limit(10)
+                ->orderBy('level')
+                ->limit(3)
                 ->get();
         } catch (\Throwable $e) {
             $error = $e->getMessage();
@@ -75,6 +113,11 @@ Route::middleware('auth')->group(function () {
             'userStats' => $userStats,
             'recentUsers' => $recentUsers,
             'levelDistribution' => $levelDistribution,
+            'newToday' => $newToday,
+            'newWeek' => $newWeek,
+            'newMonth' => $newMonth,
+            'newYear' => $newYear,
+            'debug' => $debug,
             'error' => $error,
         ]);
     });

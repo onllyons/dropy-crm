@@ -15,11 +15,27 @@
 
                 <main class="p-4 md:p-6">
 
-                    <div class="grid gap-4 md:grid-cols-4">
+                    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                         <div class="rounded-2xl border border-slate-200 bg-white p-5">
                             <div class="text-sm font-semibold text-slate-700">Users</div>
                             <div class="mt-3 text-2xl font-semibold">{{ $userCount ?? 0 }}</div>
                         </div>
+                        <a class="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/course') }}">
+                            <div class="text-sm font-semibold text-slate-700">Course</div>
+                            <div class="mt-3 text-sm text-slate-500">Open page</div>
+                        </a>
+                        <a class="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/books') }}">
+                            <div class="text-sm font-semibold text-slate-700">Books</div>
+                            <div class="mt-3 text-sm text-slate-500">Open page</div>
+                        </a>
+                        <a class="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/games') }}">
+                            <div class="text-sm font-semibold text-slate-700">Games</div>
+                            <div class="mt-3 text-sm text-slate-500">Open page</div>
+                        </a>
+                        <a class="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/flash-cards') }}">
+                            <div class="text-sm font-semibold text-slate-700">Flash-cards</div>
+                            <div class="mt-3 text-sm text-slate-500">Open page</div>
+                        </a>
                     </div>
                 </main>
             </div>

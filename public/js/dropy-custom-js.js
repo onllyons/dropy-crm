@@ -36,4 +36,40 @@ document.addEventListener('DOMContentLoaded', () => {
         offcanvasOverlay.addEventListener('click', closeOffcanvas);
         offcanvasClose.addEventListener('click', closeOffcanvas);
     }
+
+    const navToggles = document.querySelectorAll('[data-nav-toggle]');
+    const navGroups = document.querySelectorAll('[data-nav-group]');
+    let activeGroup = document.querySelector('[data-nav-group="home"]');
+
+    const showGroup = (target) => {
+        if (!target || target === activeGroup) {
+            return;
+        }
+
+        const hideGroup = activeGroup;
+        hideGroup.classList.add('nav-group--hidden');
+
+        const onHideEnd = () => {
+            hideGroup.classList.add('hidden');
+            hideGroup.removeEventListener('transitionend', onHideEnd);
+        };
+        hideGroup.addEventListener('transitionend', onHideEnd);
+
+        target.classList.remove('hidden');
+        requestAnimationFrame(() => {
+            target.classList.remove('nav-group--hidden');
+        });
+
+        activeGroup = target;
+    };
+
+    navToggles.forEach((toggle) => {
+        toggle.addEventListener('click', () => {
+            const targetName = toggle.getAttribute('data-nav-toggle');
+            const targetGroup = document.querySelector(`[data-nav-group="${targetName}"]`);
+            showGroup(targetGroup);
+            navToggles.forEach((btn) => btn.classList.remove('is-active'));
+            toggle.classList.add('is-active');
+        });
+    });
 });

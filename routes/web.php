@@ -28,6 +28,22 @@ Route::middleware('auth')->group(function () {
     Route::get('/datatables', function () {
         return view('datatables');
     });
+
+    Route::get('/course', function () {
+        return view('course');
+    });
+
+    Route::get('/books', function () {
+        return view('books');
+    });
+
+    Route::get('/games', function () {
+        return view('games');
+    });
+
+    Route::get('/flash-cards', function () {
+        return view('flash-cards');
+    });
 });
 
 Route::middleware('guest')->get('/login', function () {

@@ -14,6 +14,12 @@
         </button>
         <div class="space-y-2">
             <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Quick links</div>
+            <a class="block rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100" href="https://www.language.onllyons.com/ru/ru-en/dropy-crm/public/login" target="_blank" rel="noreferrer">
+                Dropy
+            </a>
+            <a class="block rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100" href="https://www.language.onllyons.com/admin-center/" target="_blank" rel="noreferrer">
+                CRM old vers
+            </a>
             <a class="block rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100" href="http://localhost/phpmyadmin/index.php?route=/sql&db=onllyons_en&table=a_users&pos=0" target="_blank" rel="noreferrer">
                 mysql xampp
             </a>

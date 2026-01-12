@@ -38,3 +38,41 @@
     border-radius: 999px;
     background: #ffffff;
 }
+
+.nav-logout {
+    padding: 8px 10px;
+}
+
+.nav-group {
+    transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.nav-group--hidden {
+    opacity: 0;
+    transform: translateY(6px);
+    pointer-events: none;
+}
+
+.nav-switch {
+    display: flex;
+    gap: 8px;
+    padding-bottom: 8px;
+}
+
+.nav-switch-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 0.6rem;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #475569;
+}
+
+.nav-switch-btn.is-active {
+    background: #0f172a;
+    border-color: #0f172a;
+    color: #ffffff;
+}

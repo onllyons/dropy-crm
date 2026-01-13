@@ -37,6 +37,36 @@ document.addEventListener('DOMContentLoaded', () => {
         offcanvasClose.addEventListener('click', closeOffcanvas);
     }
 
+    const topLinksButton = document.getElementById('topLinksButton');
+    const topLinksMenu = document.getElementById('topLinksMenu');
+
+    if (topLinksButton && topLinksMenu) {
+        const closeTopLinks = () => {
+            topLinksMenu.classList.add('hidden');
+            topLinksButton.setAttribute('aria-expanded', 'false');
+        };
+
+        const toggleTopLinks = (event) => {
+            event.stopPropagation();
+            const isHidden = topLinksMenu.classList.contains('hidden');
+            topLinksMenu.classList.toggle('hidden', !isHidden);
+            topLinksButton.setAttribute('aria-expanded', String(isHidden));
+        };
+
+        topLinksButton.addEventListener('click', toggleTopLinks);
+        document.addEventListener('click', (event) => {
+            if (topLinksMenu.contains(event.target) || topLinksButton.contains(event.target)) {
+                return;
+            }
+            closeTopLinks();
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeTopLinks();
+            }
+        });
+    }
+
     const navToggles = document.querySelectorAll('[data-nav-toggle]');
     const navGroups = document.querySelectorAll('[data-nav-group]');
     let activeGroup = document.querySelector('[data-nav-group="home"]');

@@ -19,6 +19,14 @@
                         <i class="fa-solid fa-user mr-2"></i>
                         Users
                     </a>
+                    <a class="{{ request()->is('subscription') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/subscription') }}">
+                        <i class="fa-solid fa-receipt mr-2"></i>
+                        Subscription
+                    </a>
+                    <a class="{{ request()->is('visitors-analytics') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/visitors-analytics') }}">
+                        <i class="fa-solid fa-chart-line mr-2"></i>
+                        Visitor analytics
+                    </a>
                     <a class="{{ request()->is('course') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/course') }}">
                         <i class="fa-solid fa-book mr-2"></i>
                         Course

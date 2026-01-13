@@ -37,7 +37,7 @@ Route::middleware('auth')->group(function () {
         return view('datatables');
     });
 
-    Route::get('/users', function () {
+    Route::get('/users', function (Request $request) {
         $error = null;
         $userStats = null;
         $recentUsers = collect();
@@ -47,6 +47,14 @@ Route::middleware('auth')->group(function () {
         $newMonth = 0;
         $newYear = 0;
         $debug = null;
+        $range = $request->query('range', 'today');
+        $search = trim((string) $request->query('q', ''));
+        $rangeLabels = [
+            'today' => 'Today',
+            'yesterday' => 'Yesterday',
+            'week' => 'This week',
+            'month' => 'This month',
+        ];
 
         try {
             $userStats = \DB::table('users')
@@ -92,11 +100,37 @@ Route::middleware('auth')->group(function () {
                 'db_today_count' => $todayCheck->count ?? null,
             ];
 
-            $recentUsers = \DB::table('users')
-                ->select('id', 'username', 'email', 'level', 'verified', 'time')
-                ->selectRaw('FROM_UNIXTIME(`time`) as time_label')
+            if (!array_key_exists($range, $rangeLabels)) {
+                $range = 'today';
+            }
+
+            $recentUsersQuery = \DB::table('users')
+                ->select('id', 'name', 'username', 'email', 'level', 'verified', 'time', 'image')
+                ->selectRaw('FROM_UNIXTIME(`time`) as time_label');
+
+            if ($range === 'today') {
+                $recentUsersQuery->whereRaw('DATE(FROM_UNIXTIME(`time`)) = CURDATE()');
+            } elseif ($range === 'yesterday') {
+                $recentUsersQuery->whereRaw('DATE(FROM_UNIXTIME(`time`)) = CURDATE() - INTERVAL 1 DAY');
+            } elseif ($range === 'week') {
+                $recentUsersQuery->whereRaw('YEARWEEK(FROM_UNIXTIME(`time`), 1) = YEARWEEK(CURDATE(), 1)');
+            } elseif ($range === 'month') {
+                $recentUsersQuery->whereRaw('YEAR(FROM_UNIXTIME(`time`)) = YEAR(CURDATE())')
+                    ->whereRaw('MONTH(FROM_UNIXTIME(`time`)) = MONTH(CURDATE())');
+            }
+
+            if ($search !== '') {
+                $recentUsersQuery->where(function ($query) use ($search) {
+                    $like = '%' . $search . '%';
+                    $query->where('name', 'like', $like)
+                        ->orWhere('username', 'like', $like)
+                        ->orWhere('email', 'like', $like);
+                });
+            }
+
+            $recentUsers = $recentUsersQuery
                 ->orderByDesc('time')
-                ->limit(200)
+                ->limit(1000)
                 ->get();
 
             $levelDistribution = \DB::table('users')
@@ -117,10 +151,548 @@ Route::middleware('auth')->group(function () {
             'newWeek' => $newWeek,
             'newMonth' => $newMonth,
             'newYear' => $newYear,
+            'range' => $range,
+            'rangeLabel' => $rangeLabels[$range] ?? 'Today',
+            'search' => $search,
             'debug' => $debug,
             'error' => $error,
         ]);
     });
+
+    Route::get('/subscription', function () {
+        $error = null;
+        $stats = [
+            'active' => 0,
+            'expiring_7d' => 0,
+            'expired' => 0,
+            'plan_basic' => 0,
+            'plan_pro' => 0,
+            'plan_unknown' => 0,
+            'success_count' => 0,
+            'error_count' => 0,
+            'cancel_count' => 0,
+            'pending_count' => 0,
+            'revenue_total' => 0.0,
+            'revenue_web' => 0.0,
+            'revenue_app' => 0.0,
+            'revenue_month' => 0.0,
+            'active_mrr' => 0.0,
+        ];
+        $activeSubscriptions = collect();
+        $activeWebCount = 0;
+        $activeAppCount = 0;
+
+        try {
+            $now = time();
+            $in7d = $now + (7 * 86400);
+
+            $activeQuery = \DB::connection('mysql')
+                ->table('subscriptionManagement')
+                ->where('subscribe_expire', '>=', $now);
+
+            $stats['active'] = (clone $activeQuery)->count();
+
+            $stats['expiring_7d'] = (clone $activeQuery)
+                ->where('subscribe_expire', '<=', $in7d)
+                ->count();
+
+            $stats['expired'] = \DB::connection('mysql')
+                ->table('subscriptionManagement')
+                ->where('subscribe_expire', '>', 0)
+                ->where('subscribe_expire', '<', $now)
+                ->count();
+
+            $stats['plan_basic'] = (clone $activeQuery)
+                ->where('subscribe', 1)
+                ->count();
+
+            $stats['plan_pro'] = (clone $activeQuery)
+                ->where('subscribe', 2)
+                ->count();
+
+            $stats['plan_unknown'] = (clone $activeQuery)
+                ->whereNotIn('subscribe', [1, 2])
+                ->count();
+
+            $stats['active_mrr'] = ($stats['plan_basic'] * 1.0) + ($stats['plan_pro'] * 2.04);
+
+            $stats['revenue_web'] = (float) \DB::connection('mysql')
+                ->table('subscriptionHistory')
+                ->where('subscribe_status', 1)
+                ->sum('subscribe_price');
+
+            $stats['revenue_app'] = (float) \DB::connection('mysql')
+                ->table('subscriptionHistoryApp')
+                ->where('subscribe_status', 1)
+                ->sum('subscribe_price');
+
+            $stats['revenue_total'] = $stats['revenue_web'] + $stats['revenue_app'];
+
+            $stats['revenue_month'] = (float) \DB::connection('mysql')
+                ->table('subscriptionHistory')
+                ->where('subscribe_status', 1)
+                ->whereRaw('YEAR(FROM_UNIXTIME(`time`)) = YEAR(CURDATE())')
+                ->whereRaw('MONTH(FROM_UNIXTIME(`time`)) = MONTH(CURDATE())')
+                ->sum('subscribe_price');
+
+            $stats['revenue_month'] += (float) \DB::connection('mysql')
+                ->table('subscriptionHistoryApp')
+                ->where('subscribe_status', 1)
+                ->whereRaw('YEAR(FROM_UNIXTIME(`time`)) = YEAR(CURDATE())')
+                ->whereRaw('MONTH(FROM_UNIXTIME(`time`)) = MONTH(CURDATE())')
+                ->sum('subscribe_price');
+
+            $webSuccess = \DB::connection('mysql')
+                ->table('subscriptionHistory')
+                ->where('subscribe_status', 1)
+                ->count();
+
+            $appSuccess = \DB::connection('mysql')
+                ->table('subscriptionHistoryApp')
+                ->where('subscribe_status', 1)
+                ->count();
+
+            $stats['success_count'] = $webSuccess + $appSuccess;
+
+            $webError = \DB::connection('mysql')
+                ->table('subscriptionHistory')
+                ->where('subscribe_status', 0)
+                ->count();
+
+            $appError = \DB::connection('mysql')
+                ->table('subscriptionHistoryApp')
+                ->where('subscribe_status', 0)
+                ->count();
+
+            $stats['error_count'] = $webError + $appError;
+
+            $webCancel = \DB::connection('mysql')
+                ->table('subscriptionHistory')
+                ->where('subscribe_status', -1)
+                ->count();
+
+            $appCancel = \DB::connection('mysql')
+                ->table('subscriptionHistoryApp')
+                ->where('subscribe_status', -1)
+                ->count();
+
+            $stats['cancel_count'] = $webCancel + $appCancel;
+
+            $webPending = \DB::connection('mysql')
+                ->table('subscriptionHistory')
+                ->where('subscribe_status', 2)
+                ->count();
+
+            $appPending = \DB::connection('mysql')
+                ->table('subscriptionHistoryApp')
+                ->where('subscribe_status', 2)
+                ->count();
+
+            $stats['pending_count'] = $webPending + $appPending;
+
+            $activeWeb = \DB::connection('mysql')
+                ->table('subscriptionHistory as sh')
+                ->leftJoin('users as u', 'u.id', '=', 'sh.user_id')
+                ->select(
+                    'sh.id',
+                    'sh.user_id',
+                    'sh.subscribe',
+                    'sh.subscribe_price',
+                    'sh.subscribe_start',
+                    'sh.subscribe_expire',
+                    'u.username',
+                    'u.name',
+                    'u.image'
+                )
+                ->where('sh.subscribe_status', 1)
+                ->where('sh.subscribe_expire', '>', $now)
+                ->orderBy('sh.subscribe_expire')
+                ->get()
+                ->map(function ($row) {
+                    $row->source = 'Web';
+                    return $row;
+                });
+
+            $activeApp = \DB::connection('mysql')
+                ->table('subscriptionHistoryApp as sh')
+                ->leftJoin('users as u', 'u.id', '=', 'sh.user_id')
+                ->select(
+                    'sh.id',
+                    'sh.user_id',
+                    'sh.subscribe',
+                    'sh.subscribe_price',
+                    'sh.subscribe_start',
+                    'sh.subscribe_expire',
+                    'u.username',
+                    'u.name',
+                    'u.image'
+                )
+                ->where('sh.subscribe_status', 1)
+                ->where('sh.subscribe_expire', '>', $now)
+                ->orderBy('sh.subscribe_expire')
+                ->get()
+                ->map(function ($row) {
+                    $row->source = 'App';
+                    return $row;
+                });
+
+            $activeWebCount = $activeWeb->count();
+            $activeAppCount = $activeApp->count();
+            $activeSubscriptions = $activeWeb
+                ->concat($activeApp)
+                ->sortBy('subscribe_expire')
+                ->values();
+
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('subscription', [
+            'stats' => $stats,
+            'activeSubscriptions' => $activeSubscriptions,
+            'activeWebCount' => $activeWebCount,
+            'activeAppCount' => $activeAppCount,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/visitors-analytics', function () {
+        $error = null;
+        $stats = [
+            'web_total' => 0,
+            'app_total' => 0,
+            'total' => 0,
+            'web_unique' => 0,
+            'app_unique' => 0,
+            'web_last24' => 0,
+            'app_last24' => 0,
+        ];
+        $topPages = collect();
+        $topScreens = collect();
+        $topCountriesWeb = collect();
+        $topCountriesApp = collect();
+
+        try {
+            $webBase = \DB::connection('tenant')->table('visitorBehaviorAnalytics');
+            $appBase = \DB::connection('tenant')->table('visitorBehaviorAnalyticsApp');
+            $now = time();
+            $last24 = $now - 86400;
+
+            $stats['web_total'] = (clone $webBase)->count();
+            $stats['app_total'] = (clone $appBase)->count();
+            $stats['total'] = $stats['web_total'] + $stats['app_total'];
+
+            $stats['web_unique'] = (clone $webBase)
+                ->whereNotNull('hash')
+                ->where('hash', '!=', '')
+                ->distinct()
+                ->count('hash');
+            $stats['app_unique'] = (clone $appBase)
+                ->whereNotNull('hash')
+                ->where('hash', '!=', '')
+                ->distinct()
+                ->count('hash');
+
+            $stats['web_last24'] = (clone $webBase)
+                ->where('time', '>=', $last24)
+                ->count();
+            $stats['app_last24'] = (clone $appBase)
+                ->where('time', '>=', $last24)
+                ->count();
+
+            $topPages = (clone $webBase)
+                ->select('recoveredPage', \DB::raw('COUNT(*) as count'))
+                ->whereNotNull('recoveredPage')
+                ->where('recoveredPage', '!=', '')
+                ->groupBy('recoveredPage')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get();
+
+            $topScreens = (clone $appBase)
+                ->select('screen', \DB::raw('COUNT(*) as count'))
+                ->whereNotNull('screen')
+                ->where('screen', '!=', '')
+                ->groupBy('screen')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get();
+
+            $topCountriesWeb = (clone $webBase)
+                ->select('country', \DB::raw('COUNT(*) as count'))
+                ->whereNotNull('country')
+                ->where('country', '!=', '')
+                ->groupBy('country')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get();
+
+            $topCountriesApp = (clone $appBase)
+                ->select('country', \DB::raw('COUNT(*) as count'))
+                ->whereNotNull('country')
+                ->where('country', '!=', '')
+                ->groupBy('country')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get();
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('visitors-analytics', [
+            'stats' => $stats,
+            'topPages' => $topPages,
+            'topScreens' => $topScreens,
+            'topCountriesWeb' => $topCountriesWeb,
+            'topCountriesApp' => $topCountriesApp,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/visitors-analytics-web', function () {
+        $error = null;
+        $rows = collect();
+        $users = collect();
+
+        try {
+            $rows = \DB::connection('tenant')
+                ->table('visitorBehaviorAnalytics')
+                ->select(
+                    'id',
+                    'hash',
+                    'ipAddress',
+                    'user_id',
+                    'recoveredPage',
+                    'country',
+                    'region',
+                    'city',
+                    'timezone',
+                    'browserVersion',
+                    'deviceName',
+                    'operatingSystem',
+                    'browserWindowWidth',
+                    'browserLanguage',
+                    'lengthStayOnPage',
+                    'historyToPage',
+                    'date',
+                    'time'
+                )
+                ->orderByDesc('id')
+                ->get();
+
+            $userIds = $rows->pluck('user_id')->filter()->unique()->values();
+            if ($userIds->isNotEmpty()) {
+                $users = \DB::connection('mysql')
+                    ->table('users')
+                    ->select('id', 'username', 'name')
+                    ->whereIn('id', $userIds)
+                    ->get()
+                    ->keyBy('id');
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('visitors-analytics-web', [
+            'rows' => $rows,
+            'users' => $users,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/visitors-analytics-app', function () {
+        $error = null;
+        $rows = collect();
+        $users = collect();
+
+        try {
+            $rows = \DB::connection('tenant')
+                ->table('visitorBehaviorAnalyticsApp')
+                ->select(
+                    'id',
+                    'hash',
+                    'ipAddress',
+                    'user_id',
+                    'screen',
+                    'country',
+                    'region',
+                    'city',
+                    'timezone',
+                    'osVersion',
+                    'deviceName',
+                    'operatingSystem',
+                    'windowWidth',
+                    'language',
+                    'lengthStayOnScreen',
+                    'lastScreen',
+                    'version',
+                    'date',
+                    'time'
+                )
+                ->orderByDesc('id')
+                ->get();
+
+            $userIds = $rows->pluck('user_id')->filter()->unique()->values();
+            if ($userIds->isNotEmpty()) {
+                $users = \DB::connection('mysql')
+                    ->table('users')
+                    ->select('id', 'username', 'name')
+                    ->whereIn('id', $userIds)
+                    ->get()
+                    ->keyBy('id');
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('visitors-analytics-app', [
+            'rows' => $rows,
+            'users' => $users,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/subscription-history', function () {
+        $error = null;
+        $rows = collect();
+        $users = collect();
+
+        try {
+            $rows = \DB::connection('mysql')
+                ->table('subscriptionHistory')
+                ->select('id', 'user_id', 'subscribe', 'subscribe_price', 'subscribe_status', 'subscribe_start', 'subscribe_expire', 'time')
+                ->orderByDesc('id')
+                ->get();
+
+            $userIds = $rows->pluck('user_id')->filter()->unique()->values();
+            if ($userIds->isNotEmpty()) {
+                $users = \DB::connection('mysql')
+                    ->table('users')
+                    ->select('id', 'username', 'name')
+                    ->whereIn('id', $userIds)
+                    ->get()
+                    ->keyBy('id');
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('subscription-history', [
+            'rows' => $rows,
+            'users' => $users,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/subscription-history-app', function () {
+        $error = null;
+        $rows = collect();
+        $users = collect();
+
+        try {
+            $rows = \DB::connection('mysql')
+                ->table('subscriptionHistoryApp')
+                ->select('id', 'user_id', 'subscribe', 'subscribe_price', 'subscribe_status', 'subscribe_start', 'subscribe_expire', 'time')
+                ->orderByDesc('id')
+                ->get();
+
+            $userIds = $rows->pluck('user_id')->filter()->unique()->values();
+            if ($userIds->isNotEmpty()) {
+                $users = \DB::connection('mysql')
+                    ->table('users')
+                    ->select('id', 'username', 'name')
+                    ->whereIn('id', $userIds)
+                    ->get()
+                    ->keyBy('id');
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('subscription-history-app', [
+            'rows' => $rows,
+            'users' => $users,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/subscription-management', function () {
+        $error = null;
+        $rows = collect();
+        $users = collect();
+
+        try {
+            $rows = \DB::connection('mysql')
+                ->table('subscriptionManagement')
+                ->select('id', 'user_id', 'subscribe', 'subscribe_start', 'subscribe_expire')
+                ->orderByDesc('id')
+                ->get();
+
+            $userIds = $rows->pluck('user_id')->filter()->unique()->values();
+            if ($userIds->isNotEmpty()) {
+                $users = \DB::connection('mysql')
+                    ->table('users')
+                    ->select('id', 'username', 'name')
+                    ->whereIn('id', $userIds)
+                    ->get()
+                    ->keyBy('id');
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('subscription-management', [
+            'rows' => $rows,
+            'users' => $users,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/check-users-image', function () {
+        $error = null;
+        $users = collect();
+
+        try {
+            $users = \DB::table('users')
+                ->select('id', 'name', 'username', 'image', 'time')
+                ->whereNotNull('image')
+                ->where('image', '!=', '')
+                ->where('image', '!=', 'default.png')
+                ->orderByDesc('time')
+                ->get();
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('check-users-image', [
+            'users' => $users,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/users/{id}', function (int $id) {
+        $error = null;
+        $user = null;
+
+        try {
+            $user = \DB::table('users')
+                ->select('id', 'name', 'surname', 'username', 'email', 'level', 'image', 'bio', 'verified', 'byGoogle', 'appleUser', 'profileAccess', 'time')
+                ->selectRaw('FROM_UNIXTIME(`time`) as time_label')
+                ->where('id', $id)
+                ->first();
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        if (!$user && !$error) {
+            abort(404);
+        }
+
+        return view('user-detail', [
+            'user' => $user,
+            'error' => $error,
+        ]);
+    })->where('id', '[0-9]+');
 
     Route::get('/course', function () {
         $error = null;

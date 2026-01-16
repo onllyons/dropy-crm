@@ -37,6 +37,25 @@
                         </div>
                     @endif
 
+                    <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                            <div class="text-xs font-semibold text-slate-500">Total categories</div>
+                            <div class="mt-2 text-xl font-semibold text-slate-700">{{ $summary['categories'] ?? 0 }}</div>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                            <div class="text-xs font-semibold text-slate-500">Total lessons</div>
+                            <div class="mt-2 text-xl font-semibold text-slate-700">{{ $summary['lessons'] ?? 0 }}</div>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                            <div class="text-xs font-semibold text-slate-500">Total carousel items</div>
+                            <div class="mt-2 text-xl font-semibold text-slate-700">{{ $summary['carousel'] ?? 0 }}</div>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                            <div class="text-xs font-semibold text-slate-500">Total test items</div>
+                            <div class="mt-2 text-xl font-semibold text-slate-700">{{ $summary['tests'] ?? 0 }}</div>
+                        </div>
+                    </div>
+
                     <div class="mt-6 space-y-4">
                         @forelse ($categories as $category)
                             @php

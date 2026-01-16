@@ -500,6 +500,60 @@ Route::middleware('auth')->group(function () {
         ]);
     });
 
+    Route::get('/visitorBehaviorAnalytics_debut', function () {
+        $error = null;
+        $rows = collect();
+        $users = collect();
+        $limit = 10;
+
+        try {
+            $rows = \DB::connection('tenant')
+                ->table('visitorBehaviorAnalytics')
+                ->select(
+                    'id',
+                    'hash',
+                    'ipAddress',
+                    'user_id',
+                    'recoveredPage',
+                    'country',
+                    'region',
+                    'city',
+                    'timezone',
+                    'browserVersion',
+                    'deviceName',
+                    'operatingSystem',
+                    'browserWindowWidth',
+                    'browserLanguage',
+                    'lengthStayOnPage',
+                    'historyToPage',
+                    'date',
+                    'time'
+                )
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get();
+
+            $userIds = $rows->pluck('user_id')->filter()->unique()->values();
+            if ($userIds->isNotEmpty()) {
+                $users = \DB::connection('mysql')
+                    ->table('users')
+                    ->select('id', 'username', 'name')
+                    ->whereIn('id', $userIds)
+                    ->get()
+                    ->keyBy('id');
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('visitor-behavior-analytics-debut', [
+            'rows' => $rows,
+            'users' => $users,
+            'limit' => $limit,
+            'error' => $error,
+        ]);
+    });
+
     Route::get('/visitors-analytics-app', function () {
         $error = null;
         $rows = collect();
@@ -548,6 +602,48 @@ Route::middleware('auth')->group(function () {
         return view('visitors-analytics-app', [
             'rows' => $rows,
             'users' => $users,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/visitors-analytics-clicks', function () {
+        $error = null;
+        $rows = collect();
+        $users = collect();
+        $totalClicks = 0;
+        $uniqueUsers = 0;
+        $uniqueIps = 0;
+
+        try {
+            $rows = \DB::connection('tenant')
+                ->table('clickOfApp')
+                ->select('id', 'ip', 'userId', 'timedate')
+                ->orderByDesc('id')
+                ->get();
+
+            $totalClicks = $rows->count();
+            $uniqueUsers = $rows->pluck('userId')->filter()->unique()->count();
+            $uniqueIps = $rows->pluck('ip')->filter()->unique()->count();
+
+            $userIds = $rows->pluck('userId')->filter()->unique()->values();
+            if ($userIds->isNotEmpty()) {
+                $users = \DB::connection('mysql')
+                    ->table('users')
+                    ->select('id', 'username', 'name')
+                    ->whereIn('id', $userIds)
+                    ->get()
+                    ->keyBy('id');
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('visitors-analytics-clicks', [
+            'rows' => $rows,
+            'users' => $users,
+            'totalClicks' => $totalClicks,
+            'uniqueUsers' => $uniqueUsers,
+            'uniqueIps' => $uniqueIps,
             'error' => $error,
         ]);
     });
@@ -704,6 +800,12 @@ Route::middleware('auth')->group(function () {
         $testCountsByLesson = collect();
         $carouselSeriesByLesson = collect();
         $testSeriesByLesson = collect();
+        $summary = [
+            'categories' => 0,
+            'lessons' => 0,
+            'carousel' => 0,
+            'tests' => 0,
+        ];
 
         try {
             $categories = \DB::connection('tenant')
@@ -762,6 +864,13 @@ Route::middleware('auth')->group(function () {
                 ->orderBy('series')
                 ->get()
                 ->groupBy('course_url');
+
+            $summary['categories'] = $categories->count();
+            $summary['lessons'] = $lessonsByCategory->sum(function ($lessons) {
+                return $lessons->count();
+            });
+            $summary['carousel'] = (int) $carouselCountsByLesson->sum();
+            $summary['tests'] = (int) $testCountsByLesson->sum();
         } catch (\Throwable $e) {
             $error = $e->getMessage();
         }
@@ -775,6 +884,7 @@ Route::middleware('auth')->group(function () {
             'testCountsByLesson' => $testCountsByLesson,
             'carouselSeriesByLesson' => $carouselSeriesByLesson,
             'testSeriesByLesson' => $testSeriesByLesson,
+            'summary' => $summary,
             'error' => $error,
         ]);
     });
@@ -910,11 +1020,359 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::get('/books', function () {
-        return view('books');
+        $error = null;
+        $summary = [
+            'books' => 0,
+            'categories' => 0,
+            'withImages' => 0,
+            'withAudio' => 0,
+            'withSubtitles' => 0,
+            'bookmarksTotal' => 0,
+            'readsTotal' => 0,
+            'readerUsers' => 0,
+            'bookmarkUsers' => 0,
+        ];
+        $categoryStats = collect();
+        $topBookmarked = collect();
+        $topRead = collect();
+
+        try {
+            $categories = \DB::connection('tenant')
+                ->table('read_books_categories')
+                ->select('id', 'title', 'code', 'time')
+                ->orderBy('id')
+                ->get();
+
+            $summary['categories'] = $categories->count();
+            $summary['books'] = \DB::connection('tenant')->table('read_books')->count();
+            $summary['authors'] = \DB::connection('tenant')
+                ->table('read_books')
+                ->whereNotNull('author')
+                ->where('author', '!=', '')
+                ->distinct()
+                ->count('author');
+            $summary['withAudio'] = \DB::connection('tenant')
+                ->table('read_books')
+                ->whereNotNull('audio_file')
+                ->where('audio_file', '!=', '')
+                ->count();
+            $summary['withSubtitles'] = \DB::connection('tenant')
+                ->table('read_books')
+                ->whereNotNull('subtitles_json')
+                ->where('subtitles_json', '!=', '')
+                ->count();
+            $summary['bookmarksTotal'] = \DB::connection('tenant')->table('read_books_user_bookmarks')->count();
+            $summary['readsTotal'] = \DB::connection('tenant')->table('read_books_user_mark')->count();
+            $summary['bookmarkUsers'] = \DB::connection('tenant')->table('read_books_user_bookmarks')->distinct()->count('user_id');
+            $summary['readerUsers'] = \DB::connection('tenant')->table('read_books_user_mark')->distinct()->count('user_id');
+
+            $booksByCategory = \DB::connection('tenant')
+                ->table('read_books')
+                ->select('id', 'category')
+                ->get()
+                ->groupBy('category');
+
+            $bookmarkCountsByBook = \DB::connection('tenant')
+                ->table('read_books_user_bookmarks')
+                ->select('bookmark_id', \DB::raw('COUNT(*) as count'))
+                ->groupBy('bookmark_id')
+                ->pluck('count', 'bookmark_id');
+
+            $readCountsByBook = \DB::connection('tenant')
+                ->table('read_books_user_mark')
+                ->select('mark_id', \DB::raw('COUNT(*) as count'))
+                ->groupBy('mark_id')
+                ->pluck('count', 'mark_id');
+
+            $categoryStats = $categories->map(function ($category) use ($booksByCategory, $bookmarkCountsByBook, $readCountsByBook) {
+                $bookIds = $booksByCategory->get($category->code, collect())->pluck('id');
+                $bookCount = $bookIds->count();
+                $bookmarkCount = $bookIds->sum(function ($id) use ($bookmarkCountsByBook) {
+                    return (int) $bookmarkCountsByBook->get($id, 0);
+                });
+                $readCount = $bookIds->sum(function ($id) use ($readCountsByBook) {
+                    return (int) $readCountsByBook->get($id, 0);
+                });
+
+                return (object) [
+                    'title' => $category->title,
+                    'code' => $category->code,
+                    'bookCount' => $bookCount,
+                    'bookmarkCount' => $bookmarkCount,
+                    'readCount' => $readCount,
+                    'time' => $category->time,
+                ];
+            });
+
+            $topBookmarked = \DB::connection('tenant')
+                ->table('read_books_user_bookmarks as rbub')
+                ->join('read_books as rb', 'rb.id', '=', 'rbub.bookmark_id')
+                ->select('rb.id', 'rb.title', 'rb.url', \DB::raw('COUNT(rbub.id) as count'))
+                ->groupBy('rb.id', 'rb.title', 'rb.url')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get();
+
+            $topRead = \DB::connection('tenant')
+                ->table('read_books_user_mark as rbum')
+                ->join('read_books as rb', 'rb.id', '=', 'rbum.mark_id')
+                ->select('rb.id', 'rb.title', 'rb.url', \DB::raw('COUNT(rbum.id) as count'))
+                ->groupBy('rb.id', 'rb.title', 'rb.url')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get();
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('books', [
+            'summary' => $summary,
+            'categoryStats' => $categoryStats,
+            'topBookmarked' => $topBookmarked,
+            'topRead' => $topRead,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/poetry', function () {
+        $error = null;
+        $summary = [
+            'books' => 0,
+            'categories' => 0,
+            'authors' => 0,
+            'withAudio' => 0,
+            'withSubtitles' => 0,
+            'bookmarksTotal' => 0,
+            'readsTotal' => 0,
+            'readerUsers' => 0,
+            'bookmarkUsers' => 0,
+        ];
+        $categoryStats = collect();
+        $topBookmarked = collect();
+        $topRead = collect();
+
+        try {
+            $categories = \DB::connection('tenant')
+                ->table('read_poetry_categories')
+                ->select('id', 'title', 'code', 'time')
+                ->orderBy('id')
+                ->get();
+
+            $summary['categories'] = $categories->count();
+            $summary['books'] = \DB::connection('tenant')->table('read_poetry')->count();
+            $summary['authors'] = \DB::connection('tenant')
+                ->table('read_poetry')
+                ->whereNotNull('author')
+                ->where('author', '!=', '')
+                ->distinct()
+                ->count('author');
+            $summary['withAudio'] = \DB::connection('tenant')
+                ->table('read_poetry')
+                ->whereNotNull('audio_file')
+                ->where('audio_file', '!=', '')
+                ->count();
+            $summary['withSubtitles'] = \DB::connection('tenant')
+                ->table('read_poetry')
+                ->whereNotNull('subtitles_json')
+                ->where('subtitles_json', '!=', '')
+                ->count();
+            $summary['bookmarksTotal'] = \DB::connection('tenant')->table('read_poetry_user_bookmarks')->count();
+            $summary['readsTotal'] = \DB::connection('tenant')->table('read_poetry_user_mark')->count();
+            $summary['bookmarkUsers'] = \DB::connection('tenant')->table('read_poetry_user_bookmarks')->distinct()->count('user_id');
+            $summary['readerUsers'] = \DB::connection('tenant')->table('read_poetry_user_mark')->distinct()->count('user_id');
+
+            $booksByCategory = \DB::connection('tenant')
+                ->table('read_poetry')
+                ->select('id', 'category')
+                ->get()
+                ->groupBy('category');
+
+            $bookmarkCountsByBook = \DB::connection('tenant')
+                ->table('read_poetry_user_bookmarks')
+                ->select('bookmark_id', \DB::raw('COUNT(*) as count'))
+                ->groupBy('bookmark_id')
+                ->pluck('count', 'bookmark_id');
+
+            $readCountsByBook = \DB::connection('tenant')
+                ->table('read_poetry_user_mark')
+                ->select('mark_id', \DB::raw('COUNT(*) as count'))
+                ->groupBy('mark_id')
+                ->pluck('count', 'mark_id');
+
+            $categoryStats = $categories->map(function ($category) use ($booksByCategory, $bookmarkCountsByBook, $readCountsByBook) {
+                $bookIds = $booksByCategory->get($category->code, collect())->pluck('id');
+                $bookCount = $bookIds->count();
+                $bookmarkCount = $bookIds->sum(function ($id) use ($bookmarkCountsByBook) {
+                    return (int) $bookmarkCountsByBook->get($id, 0);
+                });
+                $readCount = $bookIds->sum(function ($id) use ($readCountsByBook) {
+                    return (int) $readCountsByBook->get($id, 0);
+                });
+
+                return (object) [
+                    'title' => $category->title,
+                    'code' => $category->code,
+                    'bookCount' => $bookCount,
+                    'bookmarkCount' => $bookmarkCount,
+                    'readCount' => $readCount,
+                    'time' => $category->time,
+                ];
+            });
+
+            $topBookmarked = \DB::connection('tenant')
+                ->table('read_poetry_user_bookmarks as rpub')
+                ->join('read_poetry as rp', 'rp.id', '=', 'rpub.bookmark_id')
+                ->select('rp.id', 'rp.title', 'rp.url', \DB::raw('COUNT(rpub.id) as count'))
+                ->groupBy('rp.id', 'rp.title', 'rp.url')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get();
+
+            $topRead = \DB::connection('tenant')
+                ->table('read_poetry_user_mark as rpum')
+                ->join('read_poetry as rp', 'rp.id', '=', 'rpum.mark_id')
+                ->select('rp.id', 'rp.title', 'rp.url', \DB::raw('COUNT(rpum.id) as count'))
+                ->groupBy('rp.id', 'rp.title', 'rp.url')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get();
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('poetry', [
+            'summary' => $summary,
+            'categoryStats' => $categoryStats,
+            'topBookmarked' => $topBookmarked,
+            'topRead' => $topRead,
+            'error' => $error,
+        ]);
+    });
+
+    Route::get('/dialog', function () {
+        $error = null;
+        $summary = [
+            'books' => 0,
+            'categories' => 0,
+            'authors' => 0,
+            'withAudio' => 0,
+            'withSubtitles' => 0,
+            'bookmarksTotal' => 0,
+            'readsTotal' => 0,
+            'readerUsers' => 0,
+            'bookmarkUsers' => 0,
+        ];
+        $categoryStats = collect();
+        $topBookmarked = collect();
+        $topRead = collect();
+
+        try {
+            $categories = \DB::connection('tenant')
+                ->table('read_dialog_categories')
+                ->select('id', 'title', 'code', 'time')
+                ->orderBy('id')
+                ->get();
+
+            $summary['categories'] = $categories->count();
+            $summary['books'] = \DB::connection('tenant')->table('read_dialog')->count();
+            $summary['withImages'] = \DB::connection('tenant')
+                ->table('read_dialog')
+                ->whereNotNull('image')
+                ->where('image', '!=', '')
+                ->count();
+            $summary['withAudio'] = \DB::connection('tenant')
+                ->table('read_dialog')
+                ->whereNotNull('audio_file')
+                ->where('audio_file', '!=', '')
+                ->count();
+            $summary['withSubtitles'] = \DB::connection('tenant')
+                ->table('read_dialog')
+                ->whereNotNull('subtitles_json')
+                ->where('subtitles_json', '!=', '')
+                ->count();
+            $summary['bookmarksTotal'] = \DB::connection('tenant')->table('read_dialog_user_bookmarks')->count();
+            $summary['readsTotal'] = \DB::connection('tenant')->table('read_dialog_user_mark')->count();
+            $summary['bookmarkUsers'] = \DB::connection('tenant')->table('read_dialog_user_bookmarks')->distinct()->count('user_id');
+            $summary['readerUsers'] = \DB::connection('tenant')->table('read_dialog_user_mark')->distinct()->count('user_id');
+
+            $booksByCategory = \DB::connection('tenant')
+                ->table('read_dialog')
+                ->select('id', 'category')
+                ->get()
+                ->groupBy('category');
+
+            $bookmarkCountsByBook = \DB::connection('tenant')
+                ->table('read_dialog_user_bookmarks')
+                ->select('bookmark_id', \DB::raw('COUNT(*) as count'))
+                ->groupBy('bookmark_id')
+                ->pluck('count', 'bookmark_id');
+
+            $readCountsByBook = \DB::connection('tenant')
+                ->table('read_dialog_user_mark')
+                ->select('mark_id', \DB::raw('COUNT(*) as count'))
+                ->groupBy('mark_id')
+                ->pluck('count', 'mark_id');
+
+            $categoryStats = $categories->map(function ($category) use ($booksByCategory, $bookmarkCountsByBook, $readCountsByBook) {
+                $bookIds = $booksByCategory->get($category->code, collect())->pluck('id');
+                $bookCount = $bookIds->count();
+                $bookmarkCount = $bookIds->sum(function ($id) use ($bookmarkCountsByBook) {
+                    return (int) $bookmarkCountsByBook->get($id, 0);
+                });
+                $readCount = $bookIds->sum(function ($id) use ($readCountsByBook) {
+                    return (int) $readCountsByBook->get($id, 0);
+                });
+
+                return (object) [
+                    'title' => $category->title,
+                    'code' => $category->code,
+                    'bookCount' => $bookCount,
+                    'bookmarkCount' => $bookmarkCount,
+                    'readCount' => $readCount,
+                    'time' => $category->time,
+                ];
+            });
+
+            $topBookmarked = \DB::connection('tenant')
+                ->table('read_dialog_user_bookmarks as rdub')
+                ->join('read_dialog as rd', 'rd.id', '=', 'rdub.bookmark_id')
+                ->select('rd.id', 'rd.title', 'rd.url', \DB::raw('COUNT(rdub.id) as count'))
+                ->groupBy('rd.id', 'rd.title', 'rd.url')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get();
+
+            $topRead = \DB::connection('tenant')
+                ->table('read_dialog_user_mark as rdum')
+                ->join('read_dialog as rd', 'rd.id', '=', 'rdum.mark_id')
+                ->select('rd.id', 'rd.title', 'rd.url', \DB::raw('COUNT(rdum.id) as count'))
+                ->groupBy('rd.id', 'rd.title', 'rd.url')
+                ->orderByDesc('count')
+                ->limit(10)
+                ->get();
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('dialog', [
+            'summary' => $summary,
+            'categoryStats' => $categoryStats,
+            'topBookmarked' => $topBookmarked,
+            'topRead' => $topRead,
+            'error' => $error,
+        ]);
     });
 
     Route::get('/games', function () {
         return view('games');
+    });
+
+    Route::get('/games-table-name', function () {
+        return view('games-table-name');
+    });
+
+    Route::get('/games-rules-display', function () {
+        return view('games-rules-display');
     });
 
     Route::get('/flash-cards', function () {

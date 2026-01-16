@@ -84,6 +84,10 @@
                                 App analytics
                                 <i class="fa-solid fa-arrow-right text-slate-400"></i>
                             </a>
+                            <a class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white" href="{{ url('/visitors-analytics-clicks') }}">
+                                App store clicks
+                                <i class="fa-solid fa-arrow-right text-slate-400"></i>
+                            </a>
                         </div>
                     </div>
 

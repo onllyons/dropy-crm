@@ -27,6 +27,10 @@
                         <i class="fa-solid fa-chart-line mr-2"></i>
                         Visitor analytics
                     </a>
+                    <a class="{{ request()->is('visitorBehaviorAnalytics_debut') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/visitorBehaviorAnalytics_debut') }}">
+                        <i class="fa-solid fa-chart-area mr-2"></i>
+                        analytics_debut
+                    </a>
                     <a class="{{ request()->is('course') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/course') }}">
                         <i class="fa-solid fa-book mr-2"></i>
                         Course

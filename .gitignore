@@ -26,4 +26,5 @@ yarn-error.log
 /storage/framework/cache/data
 /storage/framework/sessions
 /storage/framework/views
+/docker/mysql-init
 Thumbs.db

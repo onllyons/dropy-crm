@@ -1,0 +1,44 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8055:8000"
+    volumes:
+      - ./:/var/www/html
+    working_dir: /var/www/html
+    depends_on:
+        db:
+          condition: service_healthy
+    environment:
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: dropy_crm
+      DB_USERNAME: dropy_user
+      DB_PASSWORD: dropy_pass
+
+    command: bash -lc "sleep 5 && php artisan config:clear && php artisan serve --host=0.0.0.0 --port=8000"
+
+  db:
+    image: mysql:5.7
+    command: --sql-mode=""
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_DATABASE: dropy_crm
+      MYSQL_USER: dropy_user
+      MYSQL_PASSWORD: dropy_pass
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d
+    
+    healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+        interval: 5s
+        timeout: 5s
+        retries: 10
+
+
+volumes:
+  db_data:

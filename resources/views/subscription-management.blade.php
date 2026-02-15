@@ -44,6 +44,21 @@
                                 </thead>
                                 <tbody class="divide-y divide-slate-100">
                                     @forelse ($rows as $row)
+                                        @php
+                                            $toEuropeanDateTime = function ($value) {
+                                                if ($value === null || $value === '') {
+                                                    return '-';
+                                                }
+                                                if (is_numeric($value)) {
+                                                    $ts = (int) $value;
+                                                    return $ts > 0 ? date('d.m.Y H:i:s', $ts) : '-';
+                                                }
+                                                $ts = strtotime((string) $value);
+                                                return $ts ? date('d.m.Y H:i:s', $ts) : (string) $value;
+                                            };
+                                            $startLabel = $toEuropeanDateTime($row->subscribe_start ?? null);
+                                            $expireLabel = $toEuropeanDateTime($row->subscribe_expire ?? null);
+                                        @endphp
                                         <tr>
                                             <td class="py-2"></td>
                                             <td class="py-2 text-slate-700">{{ $row->id }}</td>
@@ -58,8 +73,8 @@
                                                 @endif
                                             </td>
                                             <td class="py-2 text-slate-600">{{ $row->subscribe ?? '-' }}</td>
-                                            <td class="py-2 text-slate-600">{{ $row->subscribe_start ?? '-' }}</td>
-                                            <td class="py-2 text-slate-600">{{ $row->subscribe_expire ?? '-' }}</td>
+                                            <td class="py-2 text-slate-600">{{ $startLabel }}</td>
+                                            <td class="py-2 text-slate-600">{{ $expireLabel }}</td>
                                         </tr>
                                     @empty
                                         <tr>

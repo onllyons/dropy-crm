@@ -228,7 +228,9 @@
                                     @foreach ($subscriptionTables as $tableName)
                                         <tr>
                                             <td class="py-2 font-semibold text-slate-700">{{ $tableName }}</td>
-                                            <td class="py-2 text-slate-500"></td>
+                                            <td class="py-2 text-slate-500">
+                                                {{ $tableName === 'subscriptionManagementGift' ? 'tabel raspunde pentru cadouri la utilizatori' : ($tableName === 'subscriptionManagement' ? 'tabel raspunde pentru acces in aplicatie si caracterizeaza abonamentul curent' : '') }}
+                                            </td>
                                         </tr>
                                     @endforeach
                                 </tbody>

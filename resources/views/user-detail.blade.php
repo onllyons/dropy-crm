@@ -35,6 +35,21 @@
                             $imageValue = $user->image ?? null;
                             $imageUrl = $imageValue ? 'https://www.language.onllyons.com/ru/ru-en/dist/images/user-images/' . ltrim($imageValue, '/') : null;
                             $timeLabel = $user->time_label ?? null;
+                            $subscriptionRows = $subscriptionRows ?? collect();
+                            $subscriptionError = $subscriptionError ?? null;
+                            $subscriptionGiftRows = $subscriptionGiftRows ?? collect();
+                            $subscriptionGiftError = $subscriptionGiftError ?? null;
+                            $toEuropeanDateTime = function ($value) {
+                                if ($value === null || $value === '') {
+                                    return '-';
+                                }
+                                if (is_numeric($value)) {
+                                    $ts = (int) $value;
+                                    return $ts > 0 ? date('d.m.Y H:i:s', $ts) : '-';
+                                }
+                                $ts = strtotime((string) $value);
+                                return $ts ? date('d.m.Y H:i:s', $ts) : (string) $value;
+                            };
                         @endphp
                         <div class="mt-6 grid gap-6 lg:grid-cols-[260px,1fr]">
                             <div class="rounded-2xl border border-slate-200 bg-white p-5">
@@ -127,6 +142,153 @@
                                         <div class="mt-2 whitespace-pre-line">{{ $user->bio }}</div>
                                     </div>
                                 @endif
+                            </div>
+                        </div>
+
+                        <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+                            <div class="text-sm font-semibold text-slate-700">Current subscription</div>
+                            <div class="mt-2 text-xs text-slate-500">Data from subscriptionManagement for user_id = {{ $user->id }}</div>
+                            <div class="mt-1 text-xs text-slate-500">Acest tabel raspunde pentru abonamentul curent al utilizatorului.</div>
+
+                            @if ($subscriptionError)
+                                <div class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                    {{ $subscriptionError }}
+                                </div>
+                            @endif
+
+                            @php
+                                $subscriptionCount = $subscriptionRows->count();
+                                $currentSubscription = $subscriptionRows->first();
+                            @endphp
+
+                            @if ($currentSubscription)
+                                @php
+                                    $planCode = (int) ($currentSubscription->subscribe ?? 0);
+                                    $planLabel = $planCode === 1 ? 'Basic' : ($planCode === 2 ? 'Pro' : 'Free/unknown');
+                                    $startTs = is_numeric($currentSubscription->subscribe_start ?? null) ? (int) $currentSubscription->subscribe_start : null;
+                                    $expireTs = is_numeric($currentSubscription->subscribe_expire ?? null) ? (int) $currentSubscription->subscribe_expire : null;
+                                    $startLabel = $toEuropeanDateTime($currentSubscription->subscribe_start ?? null);
+                                    $expireLabel = $toEuropeanDateTime($currentSubscription->subscribe_expire ?? null);
+                                    $isActive = $expireTs ? $expireTs >= time() : false;
+                                    $daysLeft = $expireTs ? max((int) ceil(($expireTs - time()) / 86400), 0) : null;
+                                @endphp
+
+                                <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <div class="text-sm font-semibold text-slate-800">Row #{{ $currentSubscription->id }}</div>
+                                        <span class="{{ $isActive ? 'rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700' : 'rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700' }}">
+                                            {{ $isActive ? 'Active' : 'Expired' }}
+                                        </span>
+                                    </div>
+                                    <div class="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                        <div>
+                                            <div class="text-xs font-semibold text-slate-500">Plan</div>
+                                            <div class="mt-1 text-sm text-slate-700">{{ $planLabel }} ({{ $planCode }})</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs font-semibold text-slate-500">Start</div>
+                                            <div class="mt-1 text-sm text-slate-700">{{ $startLabel }}</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs font-semibold text-slate-500">Expire</div>
+                                            <div class="mt-1 text-sm text-slate-700">{{ $expireLabel }}</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs font-semibold text-slate-500">Days left</div>
+                                            <div class="mt-1 text-sm text-slate-700">{{ $daysLeft !== null ? $daysLeft : '-' }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @if ($subscriptionCount > 1)
+                                    <div class="mt-4">
+                                        <div class="text-xs font-semibold text-slate-500">Other rows (history): {{ $subscriptionCount - 1 }}</div>
+                                        <div class="mt-2 space-y-2">
+                                            @foreach ($subscriptionRows->slice(1) as $row)
+                                                @php
+                                                    $historyPlanCode = (int) ($row->subscribe ?? 0);
+                                                    $historyPlanLabel = $historyPlanCode === 1 ? 'Basic' : ($historyPlanCode === 2 ? 'Pro' : 'Free/unknown');
+                                                    $historyStartLabel = $toEuropeanDateTime($row->subscribe_start ?? null);
+                                                    $historyExpireLabel = $toEuropeanDateTime($row->subscribe_expire ?? null);
+                                                @endphp
+                                                <div class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                                                    Row #{{ $row->id }} | {{ $historyPlanLabel }} ({{ $historyPlanCode }}) | start: {{ $historyStartLabel }} | expire: {{ $historyExpireLabel }}
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endif
+                            @else
+                                <div class="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                                    No rows in subscriptionManagement for this user.
+                                </div>
+                            @endif
+                        </div>
+
+                        <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+                            <div class="text-sm font-semibold text-slate-700">Gift subscriptions</div>
+                            <div class="mt-2 text-xs text-slate-500">Rows from subscriptionManagementGift for user_id = {{ $user->id }}</div>
+
+                            @if ($subscriptionGiftError)
+                                <div class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                    {{ $subscriptionGiftError }}
+                                </div>
+                            @endif
+
+                            <div class="mt-4 overflow-x-auto">
+                                <table class="min-w-full text-sm">
+                                    <thead>
+                                        <tr class="text-left text-slate-500">
+                                            <th class="pb-2">ID</th>
+                                            <th class="pb-2">user_id</th>
+                                            <th class="pb-2">subscribe_start</th>
+                                            <th class="pb-2">subscribe_expire</th>
+                                            <th class="pb-2">Duration</th>
+                                            <th class="pb-2">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100">
+                                        @forelse ($subscriptionGiftRows as $row)
+                                            @php
+                                                $giftStartRaw = $row->subscribe_start ?? null;
+                                                $giftExpireRaw = $row->subscribe_expire ?? null;
+                                                $giftStartTs = is_numeric($giftStartRaw) ? (int) $giftStartRaw : strtotime((string) $giftStartRaw);
+                                                $giftExpireTs = is_numeric($giftExpireRaw) ? (int) $giftExpireRaw : strtotime((string) $giftExpireRaw);
+                                                $giftStartTs = $giftStartTs ?: null;
+                                                $giftExpireTs = $giftExpireTs ?: null;
+                                                $giftStartLabel = $toEuropeanDateTime($row->subscribe_start ?? null);
+                                                $giftExpireLabel = $toEuropeanDateTime($row->subscribe_expire ?? null);
+                                                $giftIsActive = $giftExpireTs ? $giftExpireTs >= time() : false;
+                                                $giftDurationLabel = '-';
+                                                if ($giftStartTs && $giftExpireTs && $giftExpireTs >= $giftStartTs) {
+                                                    $durationSeconds = $giftExpireTs - $giftStartTs;
+                                                    $durationDays = (int) floor($durationSeconds / 86400);
+                                                    $durationHours = (int) floor(($durationSeconds % 86400) / 3600);
+                                                    $durationMinutes = (int) floor(($durationSeconds % 3600) / 60);
+                                                    $giftDurationLabel = $durationDays > 0
+                                                        ? $durationDays . 'd ' . $durationHours . 'h'
+                                                        : $durationHours . 'h ' . $durationMinutes . 'm';
+                                                }
+                                            @endphp
+                                            <tr>
+                                                <td class="py-2 text-slate-700">{{ $row->id }}</td>
+                                                <td class="py-2 text-slate-600">{{ $row->user_id }}</td>
+                                                <td class="py-2 text-slate-600">{{ $giftStartLabel }}</td>
+                                                <td class="py-2 text-slate-600">{{ $giftExpireLabel }}</td>
+                                                <td class="py-2 text-slate-600">{{ $giftDurationLabel }}</td>
+                                                <td class="py-2">
+                                                    <span class="{{ $giftIsActive ? 'rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700' : 'rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700' }}">
+                                                        {{ $giftIsActive ? 'Active' : 'Expired' }}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td class="py-3 text-slate-500" colspan="6">No rows in subscriptionManagementGift for this user.</td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     @endif

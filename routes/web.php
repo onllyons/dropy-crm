@@ -55,10 +55,15 @@ Route::middleware('auth')->group(function () {
         return view('datatables');
     });
 
+    Route::get('/structure-in-app', function () {
+        return view('structure-in-app');
+    });
+
     Route::get('/users', function (Request $request) {
         $error = null;
         $userStats = null;
         $recentUsers = collect();
+        $globalUsers = collect();
         $levelDistribution = collect();
         $newToday = 0;
         $newWeek = 0;
@@ -67,6 +72,7 @@ Route::middleware('auth')->group(function () {
         $debug = null;
         $range = $request->query('range', 'today');
         $search = trim((string) $request->query('q', ''));
+        $globalSearch = trim((string) $request->query('global_q', ''));
         $rangeLabels = [
             'today' => 'Today',
             'yesterday' => 'Yesterday',
@@ -138,11 +144,11 @@ Route::middleware('auth')->group(function () {
             }
 
             if ($search !== '') {
-                $recentUsersQuery->where(function ($query) use ($search) {
-                    $like = '%' . $search . '%';
-                    $query->where('name', 'like', $like)
-                        ->orWhere('username', 'like', $like)
-                        ->orWhere('email', 'like', $like);
+                $searchLike = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search) . '%';
+                $recentUsersQuery->where(function ($query) use ($searchLike) {
+                    $query->where('name', 'like', $searchLike)
+                        ->orWhere('username', 'like', $searchLike)
+                        ->orWhere('email', 'like', $searchLike);
                 });
             }
 
@@ -150,6 +156,21 @@ Route::middleware('auth')->group(function () {
                 ->orderByDesc('time')
                 ->limit(1000)
                 ->get();
+
+            if ($globalSearch !== '') {
+                $globalSearchLike = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $globalSearch) . '%';
+                $globalUsers = \DB::table('users')
+                    ->select('id', 'name', 'username', 'email', 'level', 'verified', 'time', 'image')
+                    ->selectRaw('FROM_UNIXTIME(`time`) as time_label')
+                    ->where(function ($query) use ($globalSearchLike) {
+                        $query->where('name', 'like', $globalSearchLike)
+                            ->orWhere('username', 'like', $globalSearchLike)
+                            ->orWhere('email', 'like', $globalSearchLike);
+                    })
+                    ->orderByDesc('time')
+                    ->limit(100)
+                    ->get();
+            }
 
             $levelDistribution = \DB::table('users')
                 ->select('level', \DB::raw('COUNT(*) as count'))
@@ -172,6 +193,8 @@ Route::middleware('auth')->group(function () {
             'range' => $range,
             'rangeLabel' => $rangeLabels[$range] ?? 'Today',
             'search' => $search,
+            'globalSearch' => $globalSearch,
+            'globalUsers' => $globalUsers,
             'debug' => $debug,
             'error' => $error,
         ]);
@@ -787,6 +810,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/users/{id}', function (int $id) {
         $error = null;
         $user = null;
+        $subscriptionRows = collect();
+        $subscriptionError = null;
+        $subscriptionGiftRows = collect();
+        $subscriptionGiftError = null;
 
         try {
             $user = \DB::table('users')
@@ -798,12 +825,40 @@ Route::middleware('auth')->group(function () {
             $error = $e->getMessage();
         }
 
+        if ($user) {
+            try {
+                $subscriptionRows = \DB::connection('mysql')
+                    ->table('subscriptionManagement')
+                    ->select('id', 'user_id', 'subscribe', 'subscribe_start', 'subscribe_expire')
+                    ->where('user_id', $id)
+                    ->orderByDesc('id')
+                    ->get();
+            } catch (\Throwable $e) {
+                $subscriptionError = $e->getMessage();
+            }
+
+            try {
+                $subscriptionGiftRows = \DB::connection('mysql')
+                    ->table('subscriptionManagementGift')
+                    ->select('id', 'user_id', 'subscribe_start', 'subscribe_expire')
+                    ->where('user_id', $id)
+                    ->orderByDesc('id')
+                    ->get();
+            } catch (\Throwable $e) {
+                $subscriptionGiftError = $e->getMessage();
+            }
+        }
+
         if (!$user && !$error) {
             abort(404);
         }
 
         return view('user-detail', [
             'user' => $user,
+            'subscriptionRows' => $subscriptionRows,
+            'subscriptionError' => $subscriptionError,
+            'subscriptionGiftRows' => $subscriptionGiftRows,
+            'subscriptionGiftError' => $subscriptionGiftError,
             'error' => $error,
         ]);
     })->where('id', '[0-9]+');

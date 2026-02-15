@@ -18,7 +18,7 @@ use Illuminate\Validation\Rule;
 
 Route::middleware('auth')->group(function () {
     Route::get('/', function () {
-        $userCount = \DB::table('a_users')->count();
+        $userCount = \DB::table('users')->count();
         $tenantDb = request()->session()->get('tenant_db', config('dropy.tenants.default'));
         $tenantLabels = config('dropy.tenants.allowed', []);
 

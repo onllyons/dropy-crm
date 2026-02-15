@@ -13,19 +13,19 @@ services:
       DB_CONNECTION: mysql
       DB_HOST: db
       DB_PORT: 3306
-      DB_DATABASE: dropy_crm
+      DB_DATABASE: onllyons_en
       DB_USERNAME: dropy_user
       DB_PASSWORD: dropy_pass
 
     command: bash -lc "sleep 5 && php artisan config:clear && php artisan serve --host=0.0.0.0 --port=8000"
 
   db:
-    image: mysql:5.7
+    image: mysql:8.0
     command: --sql-mode=""
     ports:
       - "3307:3306"
     environment:
-      MYSQL_DATABASE: dropy_crm
+      MYSQL_DATABASE: onllyons_en
       MYSQL_USER: dropy_user
       MYSQL_PASSWORD: dropy_pass
       MYSQL_ROOT_PASSWORD: root
@@ -38,6 +38,19 @@ services:
         interval: 5s
         timeout: 5s
         retries: 10
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root
 
 
 volumes:

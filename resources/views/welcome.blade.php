@@ -32,8 +32,9 @@
 
                     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                         <div class="rounded-2xl border border-slate-200 bg-white p-5">
-                            <div class="text-sm font-semibold text-slate-700">Users</div>
+                            <div class="text-sm font-semibold text-slate-700">Users (date.new)</div>
                             <div class="mt-3 text-2xl font-semibold">{{ $userCount ?? 0 }}</div>
+                            <div class="mt-1 text-xs text-slate-500">Today only (unix time range)</div>
                         </div>
                         <a class="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/course') }}">
                             <div class="text-sm font-semibold text-slate-700">Course</div>

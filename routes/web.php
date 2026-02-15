@@ -22,11 +22,26 @@ Route::middleware('auth')->group(function () {
             ->whereRaw('`time` >= UNIX_TIMESTAMP(CURDATE())')
             ->whereRaw('`time` < UNIX_TIMESTAMP(CURDATE() + INTERVAL 1 DAY)')
             ->count();
+        $todayDate = now()->toDateString();
+        $webViewsToday = \DB::table('visitorBehaviorAnalytics')
+            ->where(function ($query) use ($todayDate) {
+                $query->whereDate('date', $todayDate)
+                    ->orWhere('date', $todayDate);
+            })
+            ->count();
+        $appViewsToday = \DB::table('visitorBehaviorAnalyticsApp')
+            ->where(function ($query) use ($todayDate) {
+                $query->whereDate('date', $todayDate)
+                    ->orWhere('date', $todayDate);
+            })
+            ->count();
         $tenantDb = request()->session()->get('tenant_db', config('dropy.tenants.default'));
         $tenantLabels = config('dropy.tenants.allowed', []);
 
         return view('welcome', [
             'userCount' => $userCount,
+            'webViewsToday' => $webViewsToday,
+            'appViewsToday' => $appViewsToday,
             'tenantDb' => $tenantDb,
             'tenantLabels' => $tenantLabels,
         ]);

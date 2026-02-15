@@ -15,7 +15,7 @@
 
                 <main class="p-4 md:p-6">
 
-                    <div class="rounded-2xl border border-slate-200 bg-white p-5">
+                    <div class="rounded-2xl border border-slate-200 bg-white p-5 mb-4">
                         <div class="text-sm font-semibold text-slate-700">Databases</div>
                         <div class="mt-3 flex flex-wrap gap-2">
                             @foreach ($tenantLabels as $dbName => $label)
@@ -30,25 +30,35 @@
                         </div>
                     </div>
 
-                    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                        <div class="rounded-2xl border border-slate-200 bg-white p-5">
-                            <div class="text-sm font-semibold text-slate-700">Users (date.new)</div>
+                    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5" data-section="dashboard-stats">
+                        <div class="h-full min-h-[132px] rounded-2xl border border-slate-200 bg-white p-5">
+                            <div class="text-sm font-semibold text-slate-700">Users ({{ now()->format('d.m.Y') }})</div>
                             <div class="mt-3 text-2xl font-semibold">{{ $userCount ?? 0 }}</div>
                             <div class="mt-1 text-xs text-slate-500">Today only (unix time range)</div>
                         </div>
-                        <a class="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/course') }}">
+                        <div class="h-full min-h-[132px] rounded-2xl border border-slate-200 bg-white p-5">
+                            <div class="text-sm font-semibold text-slate-700">Web views</div>
+                            <div class="mt-3 text-2xl font-semibold">{{ $webViewsToday ?? 0 }}</div>
+                            <div class="mt-1 text-xs text-slate-500">Today</div>
+                        </div>
+                        <div class="h-full min-h-[132px] rounded-2xl border border-slate-200 bg-white p-5">
+                            <div class="text-sm font-semibold text-slate-700">App views</div>
+                            <div class="mt-3 text-2xl font-semibold">{{ $appViewsToday ?? 0 }}</div>
+                            <div class="mt-1 text-xs text-slate-500">Today</div>
+                        </div>
+                        <a class="block h-full min-h-[132px] rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/course') }}">
                             <div class="text-sm font-semibold text-slate-700">Course</div>
                             <div class="mt-3 text-sm text-slate-500">Open page</div>
                         </a>
-                        <a class="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/books') }}">
+                        <a class="block h-full min-h-[132px] rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/books') }}">
                             <div class="text-sm font-semibold text-slate-700">Books</div>
                             <div class="mt-3 text-sm text-slate-500">Open page</div>
                         </a>
-                        <a class="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/games') }}">
+                        <a class="block h-full min-h-[132px] rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/games') }}">
                             <div class="text-sm font-semibold text-slate-700">Games</div>
                             <div class="mt-3 text-sm text-slate-500">Open page</div>
                         </a>
-                        <a class="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/flash-cards') }}">
+                        <a class="block h-full min-h-[132px] rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-sm" href="{{ url('/flash-cards') }}">
                             <div class="text-sm font-semibold text-slate-700">Flash-cards</div>
                             <div class="mt-3 text-sm text-slate-500">Open page</div>
                         </a>

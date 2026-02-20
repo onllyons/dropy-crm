@@ -419,9 +419,20 @@ Route::middleware('auth')->group(function () {
         $topCountriesApp = collect();
         $today = now()->toDateString();
         $startOfMonth = now()->startOfMonth()->toDateString();
-
-        $dateStartInput = trim((string) $request->query('date_start', $startOfMonth));
-        $dateEndInput = trim((string) $request->query('date_end', $today));
+        $presetOptions = [
+            'today' => 'Today',
+            'yesterday' => 'Yesterday',
+            '7d' => 'Last 7 days',
+            'month_current' => 'Current month',
+            'month_prev' => 'Previous month',
+            '3m' => 'Last 3 months',
+            '6m' => 'Last 6 months',
+            '12m' => 'Last 12 months',
+        ];
+        $preset = (string) $request->query('preset', 'month_current');
+        if (!array_key_exists($preset, $presetOptions)) {
+            $preset = 'month_current';
+        }
         $sortOptions = [
             'count_desc' => 'Most events',
             'count_asc' => 'Least events',
@@ -441,8 +452,56 @@ Route::middleware('auth')->group(function () {
 
             return date('Y-m-d', $ts);
         };
-        $dateStart = $normalizeDate($dateStartInput, $startOfMonth);
-        $dateEnd = $normalizeDate($dateEndInput, $today);
+
+        $presetRangeResolver = function ($presetKey) use ($today) {
+            if ($presetKey === 'today') {
+                return [$today, $today];
+            }
+
+            if ($presetKey === 'yesterday') {
+                $yesterday = now()->subDay()->toDateString();
+                return [$yesterday, $yesterday];
+            }
+
+            if ($presetKey === '7d') {
+                return [now()->subDays(6)->toDateString(), $today];
+            }
+
+            if ($presetKey === 'month_prev') {
+                return [
+                    now()->subMonth()->startOfMonth()->toDateString(),
+                    now()->subMonth()->endOfMonth()->toDateString(),
+                ];
+            }
+
+            if ($presetKey === '3m') {
+                return [now()->subMonths(2)->startOfMonth()->toDateString(), $today];
+            }
+
+            if ($presetKey === '6m') {
+                return [now()->subMonths(5)->startOfMonth()->toDateString(), $today];
+            }
+
+            if ($presetKey === '12m') {
+                return [now()->subMonths(11)->startOfMonth()->toDateString(), $today];
+            }
+
+            return [now()->startOfMonth()->toDateString(), $today];
+        };
+
+        $hasManualDate = $request->has('date_start') || $request->has('date_end');
+        if ($hasManualDate) {
+            $dateStartInput = trim((string) $request->query('date_start', $startOfMonth));
+            $dateEndInput = trim((string) $request->query('date_end', $today));
+            $dateStart = $normalizeDate($dateStartInput, $startOfMonth);
+            $dateEnd = $normalizeDate($dateEndInput, $today);
+            $activePreset = 'custom';
+        } else {
+            [$presetStart, $presetEnd] = $presetRangeResolver($preset);
+            $dateStart = $normalizeDate($presetStart, $startOfMonth);
+            $dateEnd = $normalizeDate($presetEnd, $today);
+            $activePreset = $preset;
+        }
 
         if ($dateStart > $dateEnd) {
             $tmp = $dateStart;
@@ -570,6 +629,9 @@ Route::middleware('auth')->group(function () {
             'topCountriesApp' => $topCountriesApp,
             'dateStart' => $dateStart,
             'dateEnd' => $dateEnd,
+            'preset' => $preset,
+            'activePreset' => $activePreset,
+            'presetOptions' => $presetOptions,
             'sort' => $sort,
             'sortOptions' => $sortOptions,
             'error' => $error,

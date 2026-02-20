@@ -32,6 +32,26 @@
                                 <div class="text-xs text-slate-500">All cards and Top lists below use only this selected date range.</div>
                             </div>
                         </div>
+                        <div class="mt-4">
+                            <div class="text-xs font-semibold text-slate-500">Quick ranges</div>
+                            <div class="mt-2 flex flex-wrap gap-2">
+                                @foreach (($presetOptions ?? []) as $presetKey => $presetLabel)
+                                    @php
+                                        $presetUrl = url('/visitors-analytics') . '?' . http_build_query([
+                                            'preset' => $presetKey,
+                                            'sort' => $sort ?? 'count_desc',
+                                        ]);
+                                        $presetIsActive = ($activePreset ?? '') === $presetKey;
+                                    @endphp
+                                    <a class="{{ $presetIsActive ? 'rounded-lg border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white' : 'rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-300 hover:bg-slate-50' }}" href="{{ $presetUrl }}">
+                                        {{ $presetLabel }}
+                                    </a>
+                                @endforeach
+                            </div>
+                            @if (($activePreset ?? '') === 'custom')
+                                <div class="mt-2 text-xs text-slate-500">Custom range mode</div>
+                            @endif
+                        </div>
                         <form class="mt-4 flex flex-wrap items-end gap-3" method="get" action="{{ url('/visitors-analytics') }}">
                             <div>
                                 <label class="text-xs font-semibold text-slate-500" for="date_start">Date start</label>

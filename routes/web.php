@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\UserBehaviorController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -57,6 +58,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/structure-in-app', function () {
         return view('structure-in-app');
+    });
+
+    Route::get('/website-app-views', function () {
+        return view('website-app-views');
     });
 
     Route::get('/users', function (Request $request) {
@@ -806,6 +811,10 @@ Route::middleware('auth')->group(function () {
             'error' => $error,
         ]);
     });
+
+    Route::get('/users/{id}/behavior', [UserBehaviorController::class, 'show'])
+        ->where('id', '[0-9]+')
+        ->name('users.behavior');
 
     Route::get('/users/{id}', function (int $id) {
         $error = null;

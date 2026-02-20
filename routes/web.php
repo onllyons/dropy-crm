@@ -402,7 +402,7 @@ Route::middleware('auth')->group(function () {
         ]);
     });
 
-    Route::get('/visitors-analytics', function () {
+    Route::get('/visitors-analytics', function (Request $request) {
         $error = null;
         $stats = [
             'web_total' => 0,
@@ -417,70 +417,147 @@ Route::middleware('auth')->group(function () {
         $topScreens = collect();
         $topCountriesWeb = collect();
         $topCountriesApp = collect();
+        $today = now()->toDateString();
+        $startOfMonth = now()->startOfMonth()->toDateString();
+
+        $dateStartInput = trim((string) $request->query('date_start', $startOfMonth));
+        $dateEndInput = trim((string) $request->query('date_end', $today));
+        $sortOptions = [
+            'count_desc' => 'Most events',
+            'count_asc' => 'Least events',
+            'name_asc' => 'Name A-Z',
+            'name_desc' => 'Name Z-A',
+        ];
+        $sort = (string) $request->query('sort', 'count_desc');
+        if (!array_key_exists($sort, $sortOptions)) {
+            $sort = 'count_desc';
+        }
+
+        $normalizeDate = function ($value, $fallback) {
+            $ts = strtotime($value);
+            if ($ts === false) {
+                return $fallback;
+            }
+
+            return date('Y-m-d', $ts);
+        };
+        $dateStart = $normalizeDate($dateStartInput, $startOfMonth);
+        $dateEnd = $normalizeDate($dateEndInput, $today);
+
+        if ($dateStart > $dateEnd) {
+            $tmp = $dateStart;
+            $dateStart = $dateEnd;
+            $dateEnd = $tmp;
+        }
 
         try {
             $webBase = \DB::connection('tenant')->table('visitorBehaviorAnalytics');
             $appBase = \DB::connection('tenant')->table('visitorBehaviorAnalyticsApp');
             $now = time();
             $last24 = $now - 86400;
+            $rangeStartTs = strtotime($dateStart . ' 00:00:00');
+            $rangeEndTs = strtotime($dateEnd . ' 23:59:59');
+            $last24Start = max($last24, $rangeStartTs ?: $last24);
+            $last24End = min($now, $rangeEndTs ?: $now);
 
-            $stats['web_total'] = (clone $webBase)->count();
-            $stats['app_total'] = (clone $appBase)->count();
+            $webRangeBase = (clone $webBase)->whereBetween('date', [$dateStart, $dateEnd]);
+            $appRangeBase = (clone $appBase)->whereBetween('date', [$dateStart, $dateEnd]);
+
+            $stats['web_total'] = (clone $webRangeBase)->count();
+            $stats['app_total'] = (clone $appRangeBase)->count();
             $stats['total'] = $stats['web_total'] + $stats['app_total'];
 
-            $stats['web_unique'] = (clone $webBase)
+            $stats['web_unique'] = (clone $webRangeBase)
                 ->whereNotNull('hash')
                 ->where('hash', '!=', '')
                 ->distinct()
                 ->count('hash');
-            $stats['app_unique'] = (clone $appBase)
+            $stats['app_unique'] = (clone $appRangeBase)
                 ->whereNotNull('hash')
                 ->where('hash', '!=', '')
                 ->distinct()
                 ->count('hash');
 
-            $stats['web_last24'] = (clone $webBase)
-                ->where('time', '>=', $last24)
-                ->count();
-            $stats['app_last24'] = (clone $appBase)
-                ->where('time', '>=', $last24)
-                ->count();
+            if ($last24Start <= $last24End) {
+                $stats['web_last24'] = (clone $webRangeBase)
+                    ->whereBetween('time', [$last24Start, $last24End])
+                    ->count();
+                $stats['app_last24'] = (clone $appRangeBase)
+                    ->whereBetween('time', [$last24Start, $last24End])
+                    ->count();
+            }
 
-            $topPages = (clone $webBase)
+            $topPagesQuery = (clone $webRangeBase)
                 ->select('recoveredPage', \DB::raw('COUNT(*) as count'))
                 ->whereNotNull('recoveredPage')
                 ->where('recoveredPage', '!=', '')
                 ->groupBy('recoveredPage')
-                ->orderByDesc('count')
-                ->limit(10)
-                ->get();
+                ->limit(10);
 
-            $topScreens = (clone $appBase)
+            if ($sort === 'count_asc') {
+                $topPagesQuery->orderBy('count');
+            } elseif ($sort === 'name_asc') {
+                $topPagesQuery->orderBy('recoveredPage');
+            } elseif ($sort === 'name_desc') {
+                $topPagesQuery->orderByDesc('recoveredPage');
+            } else {
+                $topPagesQuery->orderByDesc('count');
+            }
+            $topPages = $topPagesQuery->get();
+
+            $topScreensQuery = (clone $appRangeBase)
                 ->select('screen', \DB::raw('COUNT(*) as count'))
                 ->whereNotNull('screen')
                 ->where('screen', '!=', '')
                 ->groupBy('screen')
-                ->orderByDesc('count')
-                ->limit(10)
-                ->get();
+                ->limit(10);
 
-            $topCountriesWeb = (clone $webBase)
+            if ($sort === 'count_asc') {
+                $topScreensQuery->orderBy('count');
+            } elseif ($sort === 'name_asc') {
+                $topScreensQuery->orderBy('screen');
+            } elseif ($sort === 'name_desc') {
+                $topScreensQuery->orderByDesc('screen');
+            } else {
+                $topScreensQuery->orderByDesc('count');
+            }
+            $topScreens = $topScreensQuery->get();
+
+            $topCountriesWebQuery = (clone $webRangeBase)
                 ->select('country', \DB::raw('COUNT(*) as count'))
                 ->whereNotNull('country')
                 ->where('country', '!=', '')
                 ->groupBy('country')
-                ->orderByDesc('count')
-                ->limit(10)
-                ->get();
+                ->limit(10);
 
-            $topCountriesApp = (clone $appBase)
+            if ($sort === 'count_asc') {
+                $topCountriesWebQuery->orderBy('count');
+            } elseif ($sort === 'name_asc') {
+                $topCountriesWebQuery->orderBy('country');
+            } elseif ($sort === 'name_desc') {
+                $topCountriesWebQuery->orderByDesc('country');
+            } else {
+                $topCountriesWebQuery->orderByDesc('count');
+            }
+            $topCountriesWeb = $topCountriesWebQuery->get();
+
+            $topCountriesAppQuery = (clone $appRangeBase)
                 ->select('country', \DB::raw('COUNT(*) as count'))
                 ->whereNotNull('country')
                 ->where('country', '!=', '')
                 ->groupBy('country')
-                ->orderByDesc('count')
-                ->limit(10)
-                ->get();
+                ->limit(10);
+
+            if ($sort === 'count_asc') {
+                $topCountriesAppQuery->orderBy('count');
+            } elseif ($sort === 'name_asc') {
+                $topCountriesAppQuery->orderBy('country');
+            } elseif ($sort === 'name_desc') {
+                $topCountriesAppQuery->orderByDesc('country');
+            } else {
+                $topCountriesAppQuery->orderByDesc('count');
+            }
+            $topCountriesApp = $topCountriesAppQuery->get();
         } catch (\Throwable $e) {
             $error = $e->getMessage();
         }
@@ -491,6 +568,10 @@ Route::middleware('auth')->group(function () {
             'topScreens' => $topScreens,
             'topCountriesWeb' => $topCountriesWeb,
             'topCountriesApp' => $topCountriesApp,
+            'dateStart' => $dateStart,
+            'dateEnd' => $dateEnd,
+            'sort' => $sort,
+            'sortOptions' => $sortOptions,
             'error' => $error,
         ]);
     });

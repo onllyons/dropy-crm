@@ -25,6 +25,38 @@
                         </div>
                     @endif
 
+                    <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                                <div class="text-sm font-semibold text-slate-700">Analytics date filters</div>
+                                <div class="text-xs text-slate-500">All cards and Top lists below use only this selected date range.</div>
+                            </div>
+                        </div>
+                        <form class="mt-4 flex flex-wrap items-end gap-3" method="get" action="{{ url('/visitors-analytics') }}">
+                            <div>
+                                <label class="text-xs font-semibold text-slate-500" for="date_start">Date start</label>
+                                <input class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:border-slate-400 focus:outline-none" id="date_start" name="date_start" type="date" value="{{ $dateStart ?? '' }}" />
+                            </div>
+                            <div>
+                                <label class="text-xs font-semibold text-slate-500" for="date_end">Date end</label>
+                                <input class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:border-slate-400 focus:outline-none" id="date_end" name="date_end" type="date" value="{{ $dateEnd ?? '' }}" />
+                            </div>
+                            <div>
+                                <label class="text-xs font-semibold text-slate-500" for="sort">Sort Top lists</label>
+                                <select class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 focus:border-slate-400 focus:outline-none" id="sort" name="sort">
+                                    @foreach (($sortOptions ?? []) as $sortKey => $sortLabel)
+                                        <option value="{{ $sortKey }}" {{ ($sort ?? 'count_desc') === $sortKey ? 'selected' : '' }}>{{ $sortLabel }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <button class="rounded-lg border border-slate-200 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800" type="submit">Apply</button>
+                            <a class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-slate-300" href="{{ url('/visitors-analytics') }}">Reset</a>
+                        </form>
+                        <div class="mt-3 text-xs text-slate-500">
+                            Current range: {{ $dateStart ?? '-' }} to {{ $dateEnd ?? '-' }}
+                        </div>
+                    </div>
+
                     @php
                         $stats = $stats ?? [];
                         $total = $stats['total'] ?? 0;
@@ -39,7 +71,7 @@
                     <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
                         <div class="flex flex-wrap items-center justify-between gap-3">
                             <div class="text-sm font-semibold text-slate-700">Traffic snapshot</div>
-                            <div class="text-xs text-slate-500">Counts are based on visitorBehaviorAnalytics tables.</div>
+                            <div class="text-xs text-slate-500">Counts are based on selected range only.</div>
                         </div>
                         <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                             <div class="rounded-2xl border border-slate-200 bg-white p-4">
@@ -55,11 +87,11 @@
                                 <div class="mt-2 text-xl font-semibold text-slate-700">{{ $appTotal }}</div>
                             </div>
                             <div class="rounded-2xl border border-slate-200 bg-white p-4">
-                                <div class="text-xs font-semibold text-slate-500">Last 24h (web)</div>
+                                <div class="text-xs font-semibold text-slate-500">Last 24h in range (web)</div>
                                 <div class="mt-2 text-xl font-semibold text-slate-700">{{ $webLast24 }}</div>
                             </div>
                             <div class="rounded-2xl border border-slate-200 bg-white p-4">
-                                <div class="text-xs font-semibold text-slate-500">Last 24h (app)</div>
+                                <div class="text-xs font-semibold text-slate-500">Last 24h in range (app)</div>
                                 <div class="mt-2 text-xl font-semibold text-slate-700">{{ $appLast24 }}</div>
                             </div>
                             <div class="rounded-2xl border border-slate-200 bg-white p-4">

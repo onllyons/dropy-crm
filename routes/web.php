@@ -1030,10 +1030,10 @@ Route::middleware('auth')->group(function () {
         return view('all-lessons');
     });
 
-    Route::get('/lesson/{slug}', [LessonController::class, 'show'])
+    Route::get('/lesson-crm/{slug}', [LessonController::class, 'show'])
         ->name('lesson.show');
 
-    Route::get('/lesson/{slug}/content', [LessonController::class, 'content'])
+    Route::get('/lesson-crm/{slug}/content', [LessonController::class, 'content'])
         ->name('lesson.content');
 
     Route::get('/all-lessons/content', [AllLessonsController::class, 'content'])

@@ -116,8 +116,10 @@
                                 ? '<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Finished</span>'
                                 : '<span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Pending</span>';
 
+                            const lessonHref = @json(url('/lesson-crm')) + `/${lessonUrl}`;
+
                             return `
-                                <a class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" href="/lesson/${lessonUrl}">
+                                <a class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50" href="${lessonHref}">
                                     <span class="truncate">${lessonTitle}</span>
                                     ${finishedBadge}
                                 </a>

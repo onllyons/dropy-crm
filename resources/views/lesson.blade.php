@@ -55,6 +55,33 @@
                             </div>
                         </div>
                     </div>
+
+                    <div id="course-test-edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+                        <div class="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+                            <div class="mb-4 flex items-start justify-between gap-3">
+                                <div>
+                                    <h2 id="course-test-edit-title" class="text-lg font-semibold text-slate-800">Edit course_test</h2>
+                                    <p class="mt-1 text-xs text-slate-500">Edit selected row and save.</p>
+                                </div>
+                                <button type="button" data-course-test-edit-close class="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                    Close
+                                </button>
+                            </div>
+
+                            <form id="course-test-edit-form" method="POST" action="">
+                                <input type="hidden" name="_token" value="{{ csrf_token() }}">
+                                <div id="course-test-edit-fields" class="grid gap-2 md:grid-cols-2"></div>
+                                <div class="mt-4 flex justify-end gap-2">
+                                    <button type="button" data-course-test-edit-close class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                        Cancel
+                                    </button>
+                                    <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                        Save
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                 </main>
             </div>
         </div>
@@ -70,8 +97,13 @@
 
                 const endpointUrl = @json(route('lesson.content', ['slug' => $blog]));
                 const slug = @json($blog);
-                const csrfToken = @json(csrf_token());
                 const courseTestUpdateUrlTemplate = @json(url('/course-test/__ID__/update'));
+                const testEditRows = new Map();
+                const courseTestEditModal = document.getElementById('course-test-edit-modal');
+                const courseTestEditForm = document.getElementById('course-test-edit-form');
+                const courseTestEditTitle = document.getElementById('course-test-edit-title');
+                const courseTestEditFields = document.getElementById('course-test-edit-fields');
+                const courseTestEditCloseButtons = document.querySelectorAll('[data-course-test-edit-close]');
                 const mediaBaseUrl = 'https://www.language.onllyons.com';
                 const mediaCourseBasePath = '/ru/ru-en/packs/assest/course';
                 const mediaVideoBasePath = `${mediaCourseBasePath}/video-lessons`;
@@ -171,6 +203,64 @@
                     }
 
                     return String(value);
+                };
+
+                const closeCourseTestEditModal = () => {
+                    if (!courseTestEditModal) {
+                        return;
+                    }
+
+                    courseTestEditModal.classList.add('hidden');
+                    courseTestEditModal.classList.remove('flex');
+                };
+
+                const buildEditableFieldHtml = (key, value) => {
+                    const escapedKey = escapeHtml(key);
+                    const label = escapeHtml(formatFieldLabel(key));
+                    const inputValue = formatInputValue(value);
+                    const escapedValue = escapeHtml(inputValue);
+                    const useTextarea = inputValue.includes('\n') || inputValue.length > 120;
+
+                    if (useTextarea) {
+                        return `
+                            <label class="text-xs font-semibold text-slate-600">
+                                ${label}
+                                <textarea name="${escapedKey}" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-700">${escapedValue}</textarea>
+                            </label>
+                        `;
+                    }
+
+                    return `
+                        <label class="text-xs font-semibold text-slate-600">
+                            ${label}
+                            <input type="text" name="${escapedKey}" value="${escapedValue}" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-700">
+                        </label>
+                    `;
+                };
+
+                const openCourseTestEditModal = (testIdRaw) => {
+                    if (!courseTestEditModal || !courseTestEditForm || !courseTestEditFields) {
+                        return;
+                    }
+
+                    const testId = String(testIdRaw ?? '').trim();
+                    if (testId === '') {
+                        return;
+                    }
+
+                    const editableEntries = testEditRows.get(testId);
+                    if (!Array.isArray(editableEntries) || editableEntries.length === 0) {
+                        return;
+                    }
+
+                    courseTestEditForm.setAttribute('action', courseTestUpdateUrlTemplate.replace('__ID__', encodeURIComponent(testId)));
+                    courseTestEditFields.innerHTML = editableEntries.map(([key, value]) => buildEditableFieldHtml(key, value)).join('');
+                    if (courseTestEditTitle) {
+                        courseTestEditTitle.textContent = `Edit course_test #${testId}`;
+                    }
+
+                    courseTestEditModal.classList.remove('hidden');
+                    courseTestEditModal.classList.add('flex');
                 };
 
                 const normalizeChoiceValue = (value) => {
@@ -371,9 +461,8 @@
                         const correctLabel = escapeHtml(normalizeChoiceValue(correctRawValue) || '-');
                         const variantRaw = variantLabelRaw.toLowerCase();
                         const isChoiceVariant = variantRaw === 'ct' || variantRaw === 'ca';
-                        const updateAction = rawTestId !== null && rawTestId !== undefined && String(rawTestId).trim() !== ''
-                            ? escapeHtml(courseTestUpdateUrlTemplate.replace('__ID__', encodeURIComponent(String(rawTestId))))
-                            : '';
+                        const normalizedTestId = rawTestId !== null && rawTestId !== undefined ? String(rawTestId).trim() : '';
+                        const hasEditableId = normalizedTestId !== '';
                         const media = resolveTestMedia(item);
                         const choiceValues = isChoiceVariant
                             ? ['v1', 'v2', 'v3', 'v4']
@@ -404,6 +493,10 @@
 
                                 return indexA - indexB;
                             });
+
+                        if (hasEditableId) {
+                            testEditRows.set(normalizedTestId, editableEntries);
+                        }
 
                         const fields = Object.entries(safeItem || {})
                             .filter(([key, value]) => {
@@ -500,45 +593,13 @@
                                 </div>
                             `).join('')
                             : '<div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">No visible fields for this row.</div>';
-                        const editFieldsHtml = editableEntries.map(([key, value]) => {
-                            const escapedKey = escapeHtml(key);
-                            const label = escapeHtml(formatFieldLabel(key));
-                            const inputValue = formatInputValue(value);
-                            const escapedValue = escapeHtml(inputValue);
-                            const useTextarea = inputValue.includes('\n') || inputValue.length > 120;
-
-                            if (useTextarea) {
-                                return `
-                                    <label class="text-xs font-semibold text-slate-600">
-                                        ${label}
-                                        <textarea name="${escapedKey}" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-700">${escapedValue}</textarea>
-                                    </label>
-                                `;
-                            }
-
-                            return `
-                                <label class="text-xs font-semibold text-slate-600">
-                                    ${label}
-                                    <input type="text" name="${escapedKey}" value="${escapedValue}" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-700">
-                                </label>
-                            `;
-                        }).join('');
-                        const editFormHtml = updateAction !== ''
+                        const editButtonHtml = hasEditableId
                             ? `
-                                <form method="POST" action="${updateAction}" class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                    <input type="hidden" name="_token" value="${escapeHtml(csrfToken)}">
-                                    <div class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                <div class="mt-3 flex justify-end">
+                                    <button type="button" data-course-test-edit-id="${escapeHtml(normalizedTestId)}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
                                         Edit course_test #${testId}
-                                    </div>
-                                    <div class="grid gap-2 md:grid-cols-2">
-                                        ${editFieldsHtml}
-                                    </div>
-                                    <div class="mt-2 flex justify-end">
-                                        <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
-                                            Save course_test #${testId}
-                                        </button>
-                                    </div>
-                                </form>
+                                    </button>
+                                </div>
                             `
                             : '';
 
@@ -558,13 +619,16 @@
                                     ${fieldsHtml}
                                 </div>
                                 ${choiceButtonsHtml}
-                                ${editFormHtml}
+                                ${editButtonHtml}
                             </article>
                         `;
                     }).join('');
                 };
 
                 const renderPayload = (payload) => {
+                    testEditRows.clear();
+                    closeCourseTestEditModal();
+
                     const lesson = payload?.lesson || {};
                     const carousel = Array.isArray(payload?.carousel) ? payload.carousel : [];
                     const tests = Array.isArray(payload?.tests) ? payload.tests : [];
@@ -608,6 +672,33 @@
                         </div>
                     `;
                 };
+
+                content.addEventListener('click', (event) => {
+                    const editButton = event.target.closest('[data-course-test-edit-id]');
+                    if (!editButton) {
+                        return;
+                    }
+
+                    openCourseTestEditModal(editButton.getAttribute('data-course-test-edit-id'));
+                });
+
+                courseTestEditCloseButtons.forEach((button) => {
+                    button.addEventListener('click', closeCourseTestEditModal);
+                });
+
+                if (courseTestEditModal) {
+                    courseTestEditModal.addEventListener('click', (event) => {
+                        if (event.target === courseTestEditModal) {
+                            closeCourseTestEditModal();
+                        }
+                    });
+                }
+
+                document.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape') {
+                        closeCourseTestEditModal();
+                    }
+                });
 
                 const loadContent = () => {
                     content.innerHTML = `

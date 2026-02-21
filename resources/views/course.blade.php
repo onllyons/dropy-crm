@@ -122,43 +122,19 @@
                                                     <div>No series data.</div>
                                                 @endforelse
                                             </div>
-                                            <form method="POST" action="{{ route('course.update', ['id' => $lesson->id]) }}" class="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                                @csrf
-                                                <div class="grid gap-2 md:grid-cols-3">
-                                                    <label class="text-xs font-semibold text-slate-600">
-                                                        Title
-                                                        <input
-                                                            type="text"
-                                                            name="title"
-                                                            value="{{ $lesson->title }}"
-                                                            class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-700"
-                                                        >
-                                                    </label>
-                                                    <label class="text-xs font-semibold text-slate-600">
-                                                        URL
-                                                        <input
-                                                            type="text"
-                                                            name="url"
-                                                            value="{{ $lesson->url }}"
-                                                            class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-700"
-                                                        >
-                                                    </label>
-                                                    <label class="text-xs font-semibold text-slate-600">
-                                                        Category URL
-                                                        <input
-                                                            type="text"
-                                                            name="category_url"
-                                                            value="{{ $lesson->category_url }}"
-                                                            class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-700"
-                                                        >
-                                                    </label>
-                                                </div>
-                                                <div class="mt-2 flex justify-end">
-                                                    <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
-                                                        Save course #{{ $lesson->id }}
-                                                    </button>
-                                                </div>
-                                            </form>
+                                            <div class="mt-3 flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    data-course-edit-button
+                                                    data-course-id="{{ $lesson->id }}"
+                                                    data-course-title="{{ $lesson->title }}"
+                                                    data-course-url="{{ $lesson->url }}"
+                                                    data-course-category-url="{{ $lesson->category_url }}"
+                                                    class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                                >
+                                                    Edit course #{{ $lesson->id }}
+                                                </button>
+                                            </div>
                                         </li>
                                     @empty
                                         <li class="text-sm text-slate-500">No lessons for this category.</li>
@@ -175,7 +151,120 @@
             </div>
         </div>
 
+        <div id="course-edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+            <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+                <div class="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                        <h2 id="course-edit-title" class="text-lg font-semibold text-slate-800">Edit course</h2>
+                        <p class="mt-1 text-xs text-slate-500">Simple edit for selected course row.</p>
+                    </div>
+                    <button type="button" data-course-edit-close class="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                        Close
+                    </button>
+                </div>
+
+                <form id="course-edit-form" method="POST" action="">
+                    @csrf
+                    <div class="grid gap-3 md:grid-cols-3">
+                        <label class="text-xs font-semibold text-slate-600">
+                            Title
+                            <input id="course-edit-title-input" type="text" name="title" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-700">
+                        </label>
+                        <label class="text-xs font-semibold text-slate-600">
+                            URL
+                            <input id="course-edit-url-input" type="text" name="url" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-700">
+                        </label>
+                        <label class="text-xs font-semibold text-slate-600">
+                            Category URL
+                            <input id="course-edit-category-url-input" type="text" name="category_url" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal text-slate-700">
+                        </label>
+                    </div>
+                    <div class="mt-4 flex justify-end gap-2">
+                        <button type="button" data-course-edit-close class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                            Cancel
+                        </button>
+                        <button type="submit" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                            Save
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <x-script-components />
         <x-offcanvas-right />
+        <script>
+            (function () {
+                const modal = document.getElementById('course-edit-modal');
+                const form = document.getElementById('course-edit-form');
+                const titleText = document.getElementById('course-edit-title');
+                const titleInput = document.getElementById('course-edit-title-input');
+                const urlInput = document.getElementById('course-edit-url-input');
+                const categoryUrlInput = document.getElementById('course-edit-category-url-input');
+                const editButtons = document.querySelectorAll('[data-course-edit-button]');
+                const closeButtons = document.querySelectorAll('[data-course-edit-close]');
+                const updateUrlTemplate = @json(url('/course/__ID__/update'));
+
+                if (!modal || !form || editButtons.length === 0) {
+                    return;
+                }
+
+                const openModal = (payload) => {
+                    const id = String(payload?.id ?? '').trim();
+                    if (id === '') {
+                        return;
+                    }
+
+                    form.setAttribute('action', updateUrlTemplate.replace('__ID__', encodeURIComponent(id)));
+                    if (titleText) {
+                        titleText.textContent = `Edit course #${id}`;
+                    }
+                    if (titleInput) {
+                        titleInput.value = payload?.title ?? '';
+                    }
+                    if (urlInput) {
+                        urlInput.value = payload?.url ?? '';
+                    }
+                    if (categoryUrlInput) {
+                        categoryUrlInput.value = payload?.categoryUrl ?? '';
+                    }
+
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                };
+
+                const closeModal = () => {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                };
+
+                editButtons.forEach((button) => {
+                    button.addEventListener('click', () => {
+                        openModal({
+                            id: button.getAttribute('data-course-id'),
+                            title: button.getAttribute('data-course-title'),
+                            url: button.getAttribute('data-course-url'),
+                            categoryUrl: button.getAttribute('data-course-category-url'),
+                        });
+                    });
+                });
+
+                closeButtons.forEach((button) => {
+                    button.addEventListener('click', closeModal);
+                });
+
+                modal.addEventListener('click', (event) => {
+                    if (event.target === modal) {
+                        closeModal();
+                    }
+                });
+
+                document.addEventListener('keydown', (event) => {
+                    if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+                        closeModal();
+                    }
+                });
+            })();
+        </script>
     </body>
 </html>

@@ -106,11 +106,28 @@
 
                     <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
                         <div class="flex flex-wrap items-center justify-between gap-3">
-                            <div class="text-sm font-semibold text-slate-700">Active subscriptions</div>
-                            <div class="text-xs text-slate-500">Total: {{ $activeTotal }} (Web: {{ $activeWebCount }}, App: {{ $activeAppCount }}).</div>
+                            <div>
+                                <div class="text-sm font-semibold text-slate-700">Active subscriptions</div>
+                                <div class="text-xs text-slate-500">Currently active paid subscriptions from web + app.</div>
+                            </div>
                         </div>
 
-                        <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                            <div class="rounded-2xl border border-slate-900 bg-slate-900 p-4 text-white">
+                                <div class="text-xs font-semibold text-slate-200">Total active</div>
+                                <div class="mt-2 text-2xl font-semibold">{{ $activeTotal }}</div>
+                            </div>
+                            <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                                <div class="text-xs font-semibold text-sky-700">Web active</div>
+                                <div class="mt-2 text-2xl font-semibold text-sky-900">{{ $activeWebCount }}</div>
+                            </div>
+                            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                <div class="text-xs font-semibold text-emerald-700">App active</div>
+                                <div class="mt-2 text-2xl font-semibold text-emerald-900">{{ $activeAppCount }}</div>
+                            </div>
+                        </div>
+
+                        <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                             @forelse ($activeSubscriptions as $sub)
                                 @php
                                     $subscribeValue = $sub->subscribe ?? null;
@@ -127,10 +144,10 @@
                                     $priceLabel = is_numeric($priceValue) ? '$' . number_format((float) $priceValue, 2, '.', '') : '-';
 
                                     $startLabel = is_numeric($sub->subscribe_start ?? null)
-                                        ? date('Y-m-d', (int) $sub->subscribe_start)
+                                        ? date('d.m.Y', (int) $sub->subscribe_start)
                                         : '-';
                                     $expireLabel = is_numeric($sub->subscribe_expire ?? null)
-                                        ? date('Y-m-d', (int) $sub->subscribe_expire)
+                                        ? date('d.m.Y', (int) $sub->subscribe_expire)
                                         : '-';
 
                                     $daysLeft = is_numeric($sub->subscribe_expire ?? null)

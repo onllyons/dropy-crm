@@ -29,6 +29,22 @@
                             pagina raspunde pentru a afisa un modal despre cadou; la fel acest component afiseaza un gift icon in pagina course.js.
                         </p>
                     </div>
+
+                    <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <h2 class="text-lg font-semibold text-slate-800">Path componente</h2>
+                        <p class="mt-2 text-sm text-slate-500">
+                            Aici poti salva informatia utila despre componente.
+                        </p>
+
+                        <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <div class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                                Onllyons/packs/components/common/QuizDataCard.jsx
+                            </div>
+                            <p class="mt-3 text-sm text-slate-600">
+                                partea care raspunde pentru afisarea finala la rezultate in quiz course, dar este si un component reutilizabil. patratele mici cu background diferit.
+                            </p>
+                        </div>
+                    </div>
                 </main>
             </div>
         </div>

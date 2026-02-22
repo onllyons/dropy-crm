@@ -4,6 +4,7 @@ use App\Http\Controllers\AllLessonsController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\UserBehaviorController;
+use App\Http\Controllers\UserCourseHistoryController;
 use App\Http\Controllers\UserSubscriptionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -962,6 +963,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/users/{id}/behavior', [UserBehaviorController::class, 'show'])
         ->where('id', '[0-9]+')
         ->name('users.behavior');
+
+    Route::get('/users/{id}/course-history', [UserCourseHistoryController::class, 'show'])
+        ->where('id', '[0-9]+')
+        ->name('users.course-history');
 
     Route::post('/users/{id}/subscription/grant-pro', [UserSubscriptionController::class, 'grantPro'])
         ->where('id', '[0-9]+')

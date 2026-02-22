@@ -164,7 +164,7 @@
                             <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Profile quick menu (template)</div>
                             <div class="mt-3 flex flex-wrap gap-2">
                                 <a class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-white" href="{{ route('users.behavior', ['id' => $user->id]) }}">website/app views</a>
-                                <a class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-white">Nav 2</a>
+                                <a class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-white" href="{{ route('users.course-history', ['id' => $user->id]) }}">course history</a>
                                 <a class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-white">Nav 3</a>
                             </div>
                         </div>

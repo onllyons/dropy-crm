@@ -61,6 +61,10 @@
                         <i class="fa-solid fa-sitemap mr-2"></i>
                         Structure in app
                     </a>
+                    <a class="{{ request()->is('app-update-info') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/app-update-info') }}">
+                        <i class="fa-solid fa-mobile-screen-button mr-2"></i>
+                        App update info
+                    </a>
                 </div>
                 <div class="nav-group nav-group--hidden hidden" data-nav-group="security">
                     <a class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100" href="#">

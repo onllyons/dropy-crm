@@ -26,6 +26,9 @@
                                     <a class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100" href="{{ url('/dialog') }}">
                                         Dialog
                                     </a>
+                                    <a class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100" href="{{ route('books.dictionary-words') }}">
+                                        Dictionary words
+                                    </a>
                                 </div>
                             </div>
                             <div class="text-xs font-semibold text-slate-500">

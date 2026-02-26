@@ -68,7 +68,7 @@
                     <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
                         <div class="flex flex-wrap items-center justify-between gap-2">
                             <div class="text-sm font-semibold text-slate-700">course_history rows</div>
-                            <div class="text-xs text-slate-500">SELECT id, user_id, course_id, slides_study, quizzes_study, series_data, time_study, start_time, end_time</div>
+                            <div class="text-xs text-slate-500">SELECT id, course_id, slides_study, quizzes_study, series_data, time_study, start_time, end_time</div>
                         </div>
 
                         <div class="mt-3 overflow-x-auto">
@@ -76,7 +76,6 @@
                                 <thead>
                                     <tr class="text-left text-slate-500">
                                         <th class="pb-2">id</th>
-                                        <th class="pb-2">user_id</th>
                                         <th class="pb-2">course_id</th>
                                         <th class="pb-2">slides_study</th>
                                         <th class="pb-2">quizzes_study</th>
@@ -90,8 +89,22 @@
                                     @forelse ($rows as $row)
                                         <tr>
                                             <td class="py-2 align-top text-slate-700">{{ $row['id'] }}</td>
-                                            <td class="py-2 align-top text-slate-700">{{ $row['user_id'] }}</td>
-                                            <td class="py-2 align-top text-slate-700">{{ $row['course_id'] }}</td>
+                                            <td class="py-2 align-top text-slate-700">
+                                                @if ($row['course_slug'] !== '')
+                                                    <a
+                                                        href="{{ route('lesson.show', ['slug' => $row['course_slug']]) }}"
+                                                        class="font-semibold text-slate-800 underline decoration-slate-300 underline-offset-2 hover:text-slate-900 hover:decoration-slate-500"
+                                                    >
+                                                        {{ $row['course_id'] }}
+                                                    </a>
+                                                    @if ($row['course_title'] !== '')
+                                                        <div class="text-xs text-slate-500">{{ $row['course_title'] }}</div>
+                                                    @endif
+                                                    <div class="text-[11px] text-slate-400">/{{ $row['course_slug'] }}</div>
+                                                @else
+                                                    {{ $row['course_id'] }}
+                                                @endif
+                                            </td>
                                             <td class="py-2 align-top text-slate-700">{{ $row['slides_study'] }}</td>
                                             <td class="py-2 align-top text-slate-700">{{ $row['quizzes_study'] }}</td>
                                             <td class="py-2 align-top text-slate-700">
@@ -162,7 +175,7 @@
                                         </tr>
                                     @empty
                                         <tr>
-                                            <td class="py-3 text-slate-500" colspan="9">Nu exista inregistrari in course_history pentru acest user.</td>
+                                            <td class="py-3 text-slate-500" colspan="8">Nu exista inregistrari in course_history pentru acest user.</td>
                                         </tr>
                                     @endforelse
                                 </tbody>

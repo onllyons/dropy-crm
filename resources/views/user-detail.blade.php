@@ -373,6 +373,105 @@
                                 </table>
                             </div>
                         </div>
+
+                        <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+                            <div class="text-sm font-semibold text-slate-700">complaint cooldown</div>
+                            <div class="mt-2 text-xs text-slate-500">Per tabel: problem (5 / 10 min), game (25 / 10 min), flashcards (35 / 10 min), blocare 24h.</div>
+                            <div class="mt-1 text-xs text-amber-700">Nota: in mobile API (`send_complaint`), limita este 5 pentru toate tipurile.</div>
+
+                            @if (!empty($complaintCooldownError))
+                                <div class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                    {{ $complaintCooldownError }}
+                                </div>
+                            @endif
+
+                            @php
+                                $complaintCooldownRows = collect($complaintCooldownRows ?? []);
+                                $complaintSourceTableMap = [
+                                    'problem' => 'complaintProblemCooldown',
+                                    'game' => 'complaintGameCooldown',
+                                    'flashcards' => 'complaintFlashcardsCooldown',
+                                ];
+                            @endphp
+
+                            @if ($complaintCooldownRows->isNotEmpty())
+                                <div class="mt-4 overflow-x-auto">
+                                    <table class="min-w-full text-sm">
+                                        <thead>
+                                            <tr class="text-left text-slate-500">
+                                                <th class="pb-2">source</th>
+                                                <th class="pb-2">counter</th>
+                                                <th class="pb-2">max_tries</th>
+                                                <th class="pb-2">tries_left</th>
+                                                <th class="pb-2">is_blocked</th>
+                                                <th class="pb-2">blocked_until</th>
+                                                <th class="pb-2">window_start</th>
+                                                <th class="pb-2">window_end</th>
+                                                <th class="pb-2">block_sec_left</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-100">
+                                            @foreach ($complaintCooldownRows as $row)
+                                                @php
+                                                    $source = (string) ($row['src'] ?? '-');
+                                                    $sourceTable = $complaintSourceTableMap[$source] ?? '-';
+                                                    $counter = (int) ($row['counter'] ?? 0);
+                                                    $maxTries = (int) ($row['max_tries'] ?? 0);
+                                                    $triesLeft = (int) ($row['tries_left'] ?? 0);
+                                                    $isBlocked = (int) ($row['is_blocked'] ?? 0) > 0;
+                                                    $blockedUntilLabel = $toEuropeanDateTime($row['blocked_until'] ?? null);
+                                                    $windowStartLabel = $toEuropeanDateTime($row['window_start'] ?? null);
+                                                    $windowEndLabel = $toEuropeanDateTime($row['window_end'] ?? null);
+                                                    $blockSecLeft = (int) ($row['block_sec_left'] ?? 0);
+                                                    $blockHours = (int) floor($blockSecLeft / 3600);
+                                                    $blockMinutes = (int) floor(($blockSecLeft % 3600) / 60);
+                                                    $blockSeconds = $blockSecLeft % 60;
+                                                    $blockHuman = $blockSecLeft > 0 ? ($blockHours . 'h ' . $blockMinutes . 'm ' . $blockSeconds . 's') : '0s';
+                                                @endphp
+                                                <tr>
+                                                    <td class="py-2 text-slate-700">
+                                                        <div class="font-semibold">{{ $source }}</div>
+                                                        <div class="text-xs text-slate-500">{{ $sourceTable }}</div>
+                                                    </td>
+                                                    <td class="py-2 text-slate-700">{{ $counter }}</td>
+                                                    <td class="py-2 text-slate-700">{{ $maxTries }}</td>
+                                                    <td class="py-2 text-slate-700">{{ $triesLeft }}</td>
+                                                    <td class="py-2">
+                                                        <span class="{{ $isBlocked ? 'rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700' : 'rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700' }}">
+                                                            {{ $isBlocked ? 'Yes' : 'No' }}
+                                                        </span>
+                                                    </td>
+                                                    <td class="py-2 text-slate-700">{{ $blockedUntilLabel }}</td>
+                                                    <td class="py-2 text-slate-700">{{ $windowStartLabel }}</td>
+                                                    <td class="py-2 text-slate-700">{{ $windowEndLabel }}</td>
+                                                    <td class="py-2 text-slate-700">
+                                                        <div>{{ $blockSecLeft }}</div>
+                                                        <div class="text-xs text-slate-500">{{ $blockHuman }}</div>
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            @else
+                                @php
+                                    $emptyRows = [
+                                        ['src' => 'problem', 'max_tries' => 5],
+                                        ['src' => 'game', 'max_tries' => 25],
+                                        ['src' => 'flashcards', 'max_tries' => 35],
+                                    ];
+                                @endphp
+
+                                <div class="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                                    Nu exista inca date de cooldown pentru acest user. Limite active:
+                                    @foreach ($emptyRows as $row)
+                                        <span class="ml-2 inline-flex rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600">
+                                            {{ $row['src'] }}: {{ $row['max_tries'] }} / 10 min
+                                        </span>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
                     @endif
                 </main>
             </div>

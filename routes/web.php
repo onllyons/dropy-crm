@@ -6,6 +6,7 @@ use App\Http\Controllers\LessonController;
 use App\Http\Controllers\UserBehaviorController;
 use App\Http\Controllers\UserCourseHistoryController;
 use App\Http\Controllers\UserSubscriptionController;
+use App\Services\ComplaintService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -63,6 +64,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/structure-in-app', function () {
         return view('structure-in-app');
+    });
+
+    Route::get('/app-update-info', function () {
+        return view('app-update-info');
     });
 
     Route::get('/website-app-views', function () {
@@ -979,6 +984,8 @@ Route::middleware('auth')->group(function () {
         $subscriptionError = null;
         $subscriptionGiftRows = collect();
         $subscriptionGiftError = null;
+        $complaintCooldownRows = [];
+        $complaintCooldownError = null;
 
         try {
             $user = \DB::table('users')
@@ -1012,6 +1019,15 @@ Route::middleware('auth')->group(function () {
             } catch (\Throwable $e) {
                 $subscriptionGiftError = $e->getMessage();
             }
+
+            try {
+                $complaintService = app(ComplaintService::class);
+                $cooldownResult = $complaintService->getCooldownRows($id);
+                $complaintCooldownRows = $cooldownResult['rows'] ?? [];
+                $complaintCooldownError = $cooldownResult['error'] ?? null;
+            } catch (\Throwable $e) {
+                $complaintCooldownError = $e->getMessage();
+            }
         }
 
         if (!$user && !$error) {
@@ -1024,6 +1040,8 @@ Route::middleware('auth')->group(function () {
             'subscriptionError' => $subscriptionError,
             'subscriptionGiftRows' => $subscriptionGiftRows,
             'subscriptionGiftError' => $subscriptionGiftError,
+            'complaintCooldownRows' => $complaintCooldownRows,
+            'complaintCooldownError' => $complaintCooldownError,
             'error' => $error,
         ]);
     })->where('id', '[0-9]+');
@@ -1293,6 +1311,37 @@ Route::middleware('auth')->group(function () {
             'error' => $error,
         ]);
     });
+
+    Route::get('/books/dictionary-words', function () {
+        $error = null;
+        $rows = collect();
+        $users = collect();
+
+        try {
+            $rows = \DB::connection('tenant')
+                ->table('dictionary_words')
+                ->select('id', 'user_id', 'original_word', 'translated_word', 'ipa', 'sentence', 'created_at')
+                ->orderByDesc('id')
+                ->get();
+
+            $userIds = $rows->pluck('user_id')->filter()->unique()->values();
+            if ($userIds->isNotEmpty()) {
+                $users = \DB::table('users')
+                    ->select('id', 'username', 'name')
+                    ->whereIn('id', $userIds)
+                    ->get()
+                    ->keyBy('id');
+            }
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('books-dictionary-words', [
+            'rows' => $rows,
+            'users' => $users,
+            'error' => $error,
+        ]);
+    })->name('books.dictionary-words');
 
     Route::get('/poetry', function () {
         $error = null;

@@ -39,6 +39,26 @@ class UserCourseHistoryController extends Controller
                 ->orderByDesc('id')
                 ->get();
 
+            $courseIds = $rawRows->pluck('course_id')
+                ->filter(function ($courseId) {
+                    return is_numeric($courseId) && (int) $courseId > 0;
+                })
+                ->map(function ($courseId) {
+                    return (int) $courseId;
+                })
+                ->unique()
+                ->values();
+
+            $coursesById = collect();
+            if ($courseIds->isNotEmpty()) {
+                $coursesById = DB::connection('tenant')
+                    ->table('course')
+                    ->select('id', 'url', 'title')
+                    ->whereIn('id', $courseIds)
+                    ->get()
+                    ->keyBy('id');
+            }
+
             $summary['total_rows'] = $rawRows->count();
             $summary['unique_courses'] = $rawRows->pluck('course_id')->filter()->unique()->count();
             $summary['started_rows'] = $rawRows->filter(function ($row) {
@@ -57,9 +77,11 @@ class UserCourseHistoryController extends Controller
             $seriesCorrectAnswers = 0;
             $seriesWrongAnswers = 0;
 
-            $rows = $rawRows->map(function ($row) use (&$seriesEntries, &$seriesCorrectAnswers, &$seriesWrongAnswers) {
+            $rows = $rawRows->map(function ($row) use (&$seriesEntries, &$seriesCorrectAnswers, &$seriesWrongAnswers, $coursesById) {
                 $timeStudySeconds = is_numeric($row->time_study ?? null) ? (int) $row->time_study : 0;
                 $seriesParsed = $this->parseSeriesData($row->series_data ?? null);
+                $courseId = (int) ($row->course_id ?? 0);
+                $course = $coursesById->get($courseId);
 
                 foreach ($seriesParsed['items'] as $seriesItem) {
                     $seriesEntries++;
@@ -70,7 +92,9 @@ class UserCourseHistoryController extends Controller
                 return [
                     'id' => (int) ($row->id ?? 0),
                     'user_id' => (int) ($row->user_id ?? 0),
-                    'course_id' => (int) ($row->course_id ?? 0),
+                    'course_id' => $courseId,
+                    'course_slug' => trim((string) ($course->url ?? '')),
+                    'course_title' => trim((string) ($course->title ?? '')),
                     'slides_study' => (int) ($row->slides_study ?? 0),
                     'quizzes_study' => (int) ($row->quizzes_study ?? 0),
                     'series_data_raw' => (string) ($row->series_data ?? ''),

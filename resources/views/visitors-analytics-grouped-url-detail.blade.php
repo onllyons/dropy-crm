@@ -8,6 +8,7 @@
         @php
             $detail = $detail ?? null;
             $rows = $detail['rows'] ?? null;
+            $rowsItems = $rows ? $rows->items() : [];
             $users = $detail['users'] ?? collect();
             $dailyRows = $detail['daily_rows'] ?? collect();
             $topCountries = $detail['top_countries'] ?? collect();
@@ -168,7 +169,7 @@
                                         @endif
                                     </thead>
                                     <tbody class="divide-y divide-slate-100">
-                                        @forelse (($rows?->items() ?? []) as $row)
+                                        @forelse ($rowsItems as $row)
                                             @php
                                                 $user = $users[$row->user_id] ?? null;
                                                 $userLabel = $user ? ($user->username ?? $row->user_id) : ($row->user_id ?? '-');

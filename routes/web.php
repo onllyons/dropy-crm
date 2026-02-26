@@ -671,6 +671,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/visitors-analytics-grouped-url', [VisitorsAnalyticsGroupedUrlController::class, 'index'])
         ->name('visitors-analytics-grouped-url');
+    Route::get('/visitors-analytics-grouped-url/detail', [VisitorsAnalyticsGroupedUrlController::class, 'detail'])
+        ->name('visitors-analytics-grouped-url.detail');
 
     Route::get('/visitors-analytics-web/data', function (Request $request) {
         try {

@@ -47,6 +47,11 @@
                             {{ $error }}
                         </div>
                     @endif
+                    @if (session('error'))
+                        <div class="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                            {{ session('error') }}
+                        </div>
+                    @endif
 
                     @if (!empty($result))
                         <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -95,7 +100,21 @@
                                     <tbody class="divide-y divide-slate-100">
                                         @forelse (($result['groups'] ?? []) as $row)
                                             <tr>
-                                                <td class="py-2 pr-3 text-slate-700">{{ $row->grouped_value !== '' ? $row->grouped_value : '-' }}</td>
+                                                <td class="py-2 pr-3 text-slate-700">
+                                                    @if (($row->grouped_value ?? '') !== '')
+                                                        <a
+                                                            href="{{ route('visitors-analytics-grouped-url.detail', ['source' => $result['source'] ?? ($source ?? 'web'), 'value' => $row->grouped_value]) }}"
+                                                            target="_blank"
+                                                            rel="noopener"
+                                                            class="font-semibold text-slate-800 hover:underline"
+                                                            title="Open details in new tab"
+                                                        >
+                                                            {{ $row->grouped_value }}
+                                                        </a>
+                                                    @else
+                                                        -
+                                                    @endif
+                                                </td>
                                                 <td class="py-2 pr-3 text-slate-600">{{ number_format((int) ($row->rows_count ?? 0)) }}</td>
                                                 <td class="py-2 pr-3 text-slate-600">{{ number_format((float) ($row->total_seconds ?? 0), 2, '.', ',') }}</td>
                                                 <td class="py-2 pr-3 text-slate-600">{{ number_format((float) ($row->total_hours ?? 0), 2, '.', ',') }}</td>

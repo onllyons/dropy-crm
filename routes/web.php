@@ -6,6 +6,7 @@ use App\Http\Controllers\LessonController;
 use App\Http\Controllers\UserBehaviorController;
 use App\Http\Controllers\UserCourseHistoryController;
 use App\Http\Controllers\UserSubscriptionController;
+use App\Http\Controllers\VisitorsAnalyticsGroupedUrlController;
 use App\Services\ComplaintService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -648,17 +649,71 @@ Route::middleware('auth')->group(function () {
         ]);
     });
 
-    Route::get('/visitors-analytics-web', function () {
-        $error = null;
-        $rows = collect();
-        $users = collect();
+    Route::get('/visitors-analytics-web', function (Request $request) {
+        $scopeOptions = [
+            'latest_500' => 'Latest 500 rows',
+            'today' => 'Today',
+            'week' => 'This week',
+            'month' => 'This month',
+            'month_prev' => 'Previous month',
+        ];
 
+        $scope = (string) $request->query('scope', 'latest_500');
+        if (!array_key_exists($scope, $scopeOptions)) {
+            $scope = 'latest_500';
+        }
+
+        return view('visitors-analytics-web', [
+            'scope' => $scope,
+            'scopeOptions' => $scopeOptions,
+        ]);
+    });
+
+    Route::get('/visitors-analytics-grouped-url', [VisitorsAnalyticsGroupedUrlController::class, 'index'])
+        ->name('visitors-analytics-grouped-url');
+
+    Route::get('/visitors-analytics-web/data', function (Request $request) {
         try {
-            $rows = \DB::connection('tenant')
+            $draw = (int) $request->input('draw', 1);
+            $start = max((int) $request->input('start', 0), 0);
+            $length = (int) $request->input('length', 25);
+            if ($length < 1 || $length > 500) {
+                $length = 25;
+            }
+
+            $columnMap = [
+                0 => 'id',
+                1 => 'ipAddress',
+                2 => 'user_id',
+                3 => 'recoveredPage',
+                4 => 'country',
+                5 => 'region',
+                6 => 'city',
+                7 => 'timezone',
+                8 => 'browserVersion',
+                9 => 'deviceName',
+                10 => 'operatingSystem',
+                11 => 'browserWindowWidth',
+                12 => 'browserLanguage',
+                13 => 'lengthStayOnPage',
+                14 => 'historyToPage',
+                15 => 'date',
+                16 => 'time',
+            ];
+            $orderIndex = (int) $request->input('order.0.column', 0);
+            $orderColumn = $columnMap[$orderIndex] ?? 'id';
+            $orderDir = strtolower((string) $request->input('order.0.dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+
+            $search = trim((string) $request->input('search.value', ''));
+            $scope = (string) $request->input('scope', 'latest_500');
+            if (!in_array($scope, ['latest_500', 'today', 'week', 'month', 'month_prev'], true)) {
+                $scope = 'latest_500';
+            }
+
+            $baseQuery = \DB::connection('tenant')
                 ->table('visitorBehaviorAnalytics')
                 ->select(
                     'id',
-                    'hash',
                     'ipAddress',
                     'user_id',
                     'recoveredPage',
@@ -675,11 +730,81 @@ Route::middleware('auth')->group(function () {
                     'historyToPage',
                     'date',
                     'time'
-                )
-                ->orderByDesc('id')
+                );
+
+            if ($scope === 'latest_500') {
+                $latestThresholdId = \DB::connection('tenant')
+                    ->table('visitorBehaviorAnalytics')
+                    ->orderByDesc('id')
+                    ->offset(499)
+                    ->limit(1)
+                    ->value('id');
+
+                if ($latestThresholdId !== null) {
+                    $baseQuery->where('id', '>=', (int) $latestThresholdId);
+                }
+            } else {
+                $now = now();
+                $rangeStart = null;
+                $rangeEnd = null;
+
+                if ($scope === 'today') {
+                    $rangeStart = (int) $now->copy()->startOfDay()->timestamp;
+                    $rangeEnd = (int) $now->copy()->endOfDay()->timestamp;
+                } elseif ($scope === 'week') {
+                    $rangeStart = (int) $now->copy()->startOfWeek()->timestamp;
+                    $rangeEnd = (int) $now->copy()->endOfWeek()->timestamp;
+                } elseif ($scope === 'month') {
+                    $rangeStart = (int) $now->copy()->startOfMonth()->timestamp;
+                    $rangeEnd = (int) $now->copy()->endOfMonth()->timestamp;
+                } elseif ($scope === 'month_prev') {
+                    $prevMonth = $now->copy()->subMonthNoOverflow();
+                    $rangeStart = (int) $prevMonth->copy()->startOfMonth()->timestamp;
+                    $rangeEnd = (int) $prevMonth->copy()->endOfMonth()->timestamp;
+                }
+
+                if ($rangeStart !== null && $rangeEnd !== null) {
+                    $baseQuery->whereBetween('time', [$rangeStart, $rangeEnd]);
+                }
+            }
+
+            $recordsTotal = (clone $baseQuery)->count();
+
+            if ($search !== '') {
+                $searchLike = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search) . '%';
+                $baseQuery->where(function ($query) use ($searchLike, $search) {
+                    $query->where('ipAddress', 'like', $searchLike)
+                        ->orWhere('recoveredPage', 'like', $searchLike)
+                        ->orWhere('country', 'like', $searchLike)
+                        ->orWhere('region', 'like', $searchLike)
+                        ->orWhere('city', 'like', $searchLike)
+                        ->orWhere('timezone', 'like', $searchLike)
+                        ->orWhere('browserVersion', 'like', $searchLike)
+                        ->orWhere('deviceName', 'like', $searchLike)
+                        ->orWhere('operatingSystem', 'like', $searchLike)
+                        ->orWhere('browserLanguage', 'like', $searchLike)
+                        ->orWhere('historyToPage', 'like', $searchLike)
+                        ->orWhere('date', 'like', $searchLike);
+
+                    if (is_numeric($search)) {
+                        $num = (int) $search;
+                        $query->orWhere('id', $num)
+                            ->orWhere('user_id', $num)
+                            ->orWhere('time', $num);
+                    }
+                });
+            }
+
+            $recordsFiltered = (clone $baseQuery)->count();
+
+            $rows = (clone $baseQuery)
+                ->orderBy($orderColumn, $orderDir)
+                ->offset($start)
+                ->limit($length)
                 ->get();
 
             $userIds = $rows->pluck('user_id')->filter()->unique()->values();
+            $users = collect();
             if ($userIds->isNotEmpty()) {
                 $users = \DB::connection('mysql')
                     ->table('users')
@@ -688,16 +813,51 @@ Route::middleware('auth')->group(function () {
                     ->get()
                     ->keyBy('id');
             }
-        } catch (\Throwable $e) {
-            $error = $e->getMessage();
-        }
 
-        return view('visitors-analytics-web', [
-            'rows' => $rows,
-            'users' => $users,
-            'error' => $error,
-        ]);
-    });
+            $data = $rows->map(function ($row) use ($users) {
+                $user = $users[$row->user_id] ?? null;
+                $timeValue = $row->time ?? null;
+                $timeLabel = is_numeric($timeValue) ? date('Y-m-d H:i', (int) $timeValue) : ($timeValue ?? '-');
+
+                return [
+                    'id' => is_numeric($row->id ?? null) ? (int) $row->id : 0,
+                    'ipAddress' => (string) ($row->ipAddress ?? '-'),
+                    'user_id' => is_numeric($row->user_id ?? null) ? (int) $row->user_id : null,
+                    'user_label' => (string) ($user->username ?? ($row->user_id ?? '-')),
+                    'user_name' => (string) ($user->name ?? ''),
+                    'recoveredPage' => (string) ($row->recoveredPage ?? '-'),
+                    'country' => (string) ($row->country ?? '-'),
+                    'region' => (string) ($row->region ?? '-'),
+                    'city' => (string) ($row->city ?? '-'),
+                    'timezone' => (string) ($row->timezone ?? '-'),
+                    'browserVersion' => (string) ($row->browserVersion ?? '-'),
+                    'deviceName' => (string) ($row->deviceName ?? '-'),
+                    'operatingSystem' => (string) ($row->operatingSystem ?? '-'),
+                    'browserWindowWidth' => (string) ($row->browserWindowWidth ?? '-'),
+                    'browserLanguage' => (string) ($row->browserLanguage ?? '-'),
+                    'lengthStayOnPage' => (string) ($row->lengthStayOnPage ?? '-'),
+                    'historyToPage' => (string) ($row->historyToPage ?? '-'),
+                    'date' => (string) ($row->date ?? '-'),
+                    'timeLabel' => (string) $timeLabel,
+                ];
+            })->values();
+
+            return response()->json([
+                'draw' => $draw,
+                'recordsTotal' => $recordsTotal,
+                'recordsFiltered' => $recordsFiltered,
+                'data' => $data,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'draw' => (int) $request->input('draw', 1),
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => [],
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    })->name('visitors-analytics-web.data');
 
     Route::get('/visitorBehaviorAnalytics_debut', function () {
         $error = null;
@@ -753,10 +913,15 @@ Route::middleware('auth')->group(function () {
         ]);
     });
 
-    Route::get('/visitors-analytics-app', function () {
+    Route::get('/visitors-analytics-app', function (Request $request) {
         $error = null;
         $rows = collect();
         $users = collect();
+        $perPageOptions = [100, 250, 500, 1000];
+        $perPage = (int) $request->query('per_page', 250);
+        if (!in_array($perPage, $perPageOptions, true)) {
+            $perPage = 250;
+        }
 
         try {
             $rows = \DB::connection('tenant')
@@ -783,9 +948,10 @@ Route::middleware('auth')->group(function () {
                     'time'
                 )
                 ->orderByDesc('id')
-                ->get();
+                ->paginate($perPage)
+                ->withQueryString();
 
-            $userIds = $rows->pluck('user_id')->filter()->unique()->values();
+            $userIds = collect($rows->items())->pluck('user_id')->filter()->unique()->values();
             if ($userIds->isNotEmpty()) {
                 $users = \DB::connection('mysql')
                     ->table('users')
@@ -801,6 +967,8 @@ Route::middleware('auth')->group(function () {
         return view('visitors-analytics-app', [
             'rows' => $rows,
             'users' => $users,
+            'perPage' => $perPage,
+            'perPageOptions' => $perPageOptions,
             'error' => $error,
         ]);
     });

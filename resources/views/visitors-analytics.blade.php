@@ -127,7 +127,7 @@
 
                     <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
                         <div class="text-sm font-semibold text-slate-700">Analytics sources</div>
-                        <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                             <a class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white" href="{{ url('/visitors-analytics-web') }}">
                                 Website analytics
                                 <i class="fa-solid fa-arrow-right text-slate-400"></i>
@@ -138,6 +138,10 @@
                             </a>
                             <a class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white" href="{{ url('/visitors-analytics-clicks') }}">
                                 App store clicks
+                                <i class="fa-solid fa-arrow-right text-slate-400"></i>
+                            </a>
+                            <a class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white" href="{{ url('/visitors-analytics-grouped-url') }}">
+                                Data grouped by URL
                                 <i class="fa-solid fa-arrow-right text-slate-400"></i>
                             </a>
                         </div>

@@ -3,7 +3,6 @@
     <head>
         <x-seo-component title="App analytics" />
         <x-style-head-dropy />
-        <x-styles-datatables />
     </head>
     <body class="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900">
         <div class="min-h-screen flex">
@@ -15,6 +14,16 @@
                 <x-top-nav title="App analytics" />
 
                 <main class="p-4 md:p-6">
+                    @php
+                        $isPaginator = $rows instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator || $rows instanceof \Illuminate\Contracts\Pagination\Paginator;
+                        $rowsCollection = $isPaginator ? collect($rows->items()) : collect($rows);
+                        $rowsTotal = $isPaginator ? $rows->total() : $rowsCollection->count();
+                        $rowsFrom = $isPaginator ? ($rows->firstItem() ?? 0) : ($rowsCollection->isEmpty() ? 0 : 1);
+                        $rowsTo = $isPaginator ? ($rows->lastItem() ?? 0) : $rowsCollection->count();
+                        $perPage = isset($perPage) ? (int) $perPage : 250;
+                        $perPageOptions = $perPageOptions ?? [100, 250, 500, 1000];
+                    @endphp
+
                     <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                         <h1 class="text-2xl font-semibold">App analytics</h1>
                     </div>
@@ -27,14 +36,26 @@
 
                     <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
                         <div class="flex flex-wrap items-center justify-between gap-3">
-                            <div class="text-sm font-semibold text-slate-700">All rows</div>
-                            <div class="text-xs text-slate-500">visitorBehaviorAnalyticsApp table</div>
+                            <div>
+                                <div class="text-sm font-semibold text-slate-700">App rows (paginated)</div>
+                                <div class="text-xs text-slate-500">
+                                    visitorBehaviorAnalyticsApp table | rows {{ $rowsFrom }}-{{ $rowsTo }} / {{ $rowsTotal }}
+                                </div>
+                            </div>
+                            <form method="GET" action="{{ url('/visitors-analytics-app') }}" class="flex items-center gap-2">
+                                <label for="per_page" class="text-xs text-slate-600">Rows/page</label>
+                                <select id="per_page" name="per_page" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700" onchange="this.form.submit()">
+                                    @foreach ($perPageOptions as $option)
+                                        <option value="{{ $option }}" {{ $perPage === (int) $option ? 'selected' : '' }}>{{ $option }}</option>
+                                    @endforeach
+                                </select>
+                            </form>
                         </div>
+
                         <div class="mt-3 overflow-x-auto">
-                            <table id="visitorAnalyticsAppTable" class="min-w-full text-sm">
+                            <table class="min-w-full text-sm">
                                 <thead>
                                     <tr class="text-left text-slate-500">
-                                        <th class="pb-2"></th>
                                         <th class="pb-2">ID</th>
                                         <th class="pb-2">Hash</th>
                                         <th class="pb-2">IP</th>
@@ -57,13 +78,12 @@
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-100">
-                                    @forelse ($rows as $row)
+                                    @forelse ($rowsCollection as $row)
                                         @php
                                             $timeValue = $row->time ?? null;
                                             $timeLabel = is_numeric($timeValue) ? date('Y-m-d H:i', (int) $timeValue) : ($timeValue ?? '-');
                                         @endphp
                                         <tr>
-                                            <td class="py-2"></td>
                                             <td class="py-2 text-slate-700">{{ $row->id }}</td>
                                             <td class="py-2 text-slate-600">{{ $row->hash ?? '-' }}</td>
                                             <td class="py-2 text-slate-600">{{ $row->ipAddress ?? '-' }}</td>
@@ -99,12 +119,18 @@
                                         </tr>
                                     @empty
                                         <tr>
-                                            <td class="py-3 text-slate-500" colspan="20">No rows found.</td>
+                                            <td class="py-3 text-slate-500" colspan="19">No rows found.</td>
                                         </tr>
                                     @endforelse
                                 </tbody>
                             </table>
                         </div>
+
+                        @if ($isPaginator)
+                            <div class="mt-4">
+                                {{ $rows->links() }}
+                            </div>
+                        @endif
                     </div>
                 </main>
             </div>
@@ -112,57 +138,5 @@
 
         <x-script-components />
         <x-offcanvas-right />
-        <x-script-datatables />
-
-        <script>
-            $(document).ready(function () {
-                $('#visitorAnalyticsAppTable').DataTable({
-                    dom: 'lBfrtip',
-                    responsive: true,
-                    columnDefs: [
-                        { targets: 0, className: 'dtr-control', orderable: false }
-                    ],
-                    responsive: {
-                        details: {
-                            type: 'column',
-                            target: 0
-                        }
-                    },
-                    lengthMenu: [
-                        [25, 50, -1],
-                        [25, 50, 'All']
-                    ],
-                    oLanguage: { sSearch: '' },
-                    buttons: [
-                        {
-                            extend: 'copyHtml5',
-                            text: 'Copy <i class="fas fa-copy"></i>',
-                            titleAttr: 'Copiaza',
-                            exportOptions: { columns: ':visible' }
-                        },
-                        {
-                            extend: 'excelHtml5',
-                            text: 'Excel <i class="fas fa-file-excel"></i>',
-                            titleAttr: 'Export Excel',
-                            exportOptions: { columns: ':visible' }
-                        },
-                        {
-                            extend: 'csvHtml5',
-                            text: 'CSV <i class="fas fa-file-csv"></i>',
-                            titleAttr: 'Export CSV',
-                            exportOptions: { columns: ':visible' }
-                        },
-                        {
-                            extend: 'pdfHtml5',
-                            text: 'PDF <i class="fas fa-file-pdf"></i>',
-                            titleAttr: 'Export PDF',
-                            exportOptions: { columns: ':visible' },
-                            orientation: 'landscape',
-                            pageSize: 'A4'
-                        }
-                    ]
-                });
-            });
-        </script>
     </body>
 </html>

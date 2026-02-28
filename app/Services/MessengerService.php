@@ -5,16 +5,42 @@ namespace App\Services;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Carbon;
 
 class MessengerService
 {
-    public function listTickets(): array
+    public function listTickets(string $status = 'open', int $limit = 20, string $range = 'all'): array
     {
+        $resolvedStatus = strtolower(trim($status));
+        if (!in_array($resolvedStatus, ['open', 'closed', 'all'], true)) {
+            $resolvedStatus = 'open';
+        }
+
+        $resolvedRange = $this->resolveRange($range);
+
+        if ($limit < 1) {
+            $limit = 20;
+        }
+        if ($limit > 200) {
+            $limit = 200;
+        }
+
         $complaints = collect();
 
         foreach ($this->sourceMap() as $sourceKey => $sourceMeta) {
-            $rows = $this->buildComplaintQuery($sourceKey)
+            $query = $this->buildComplaintQuery($sourceKey);
+
+            if ($resolvedStatus === 'open') {
+                $query->where($sourceMeta['status_column'], 0);
+            } elseif ($resolvedStatus === 'closed') {
+                $query->where($sourceMeta['status_column'], 1);
+            }
+
+            $this->applyDateRangeFilter($query, $sourceMeta, $resolvedRange);
+
+            $rows = $query
                 ->orderByDesc('id')
+                ->limit($limit)
                 ->get();
 
             foreach ($rows as $row) {
@@ -25,6 +51,14 @@ class MessengerService
         if ($complaints->isEmpty()) {
             return [];
         }
+
+        $complaints = $complaints
+            ->sortByDesc(function ($row) {
+                return (int) ($row['time_sort'] ?? 0);
+            })
+            ->values()
+            ->take($limit)
+            ->values();
 
         return $this->hydrateTickets($complaints);
     }
@@ -362,25 +396,81 @@ class MessengerService
                 'table' => 'complaint_user',
                 'status_column' => 'form_support_status',
                 'user_id_column' => 'user_id',
+                'time_column' => 'form_support_date',
             ],
             'complaint_user_course' => [
                 'display_name' => 'Курс: Английский язык',
                 'table' => 'complaint_user_course',
                 'status_column' => 'course_support_status',
                 'user_id_column' => 'user_id',
+                'time_column' => 'course_support_date',
             ],
             'complaint_game' => [
                 'display_name' => 'Игра',
                 'table' => 'complaint_game',
                 'status_column' => 'status',
                 'user_id_column' => 'userId',
+                'time_column' => 'time',
             ],
             'complaint_flashcards' => [
                 'display_name' => 'Карточки',
                 'table' => 'complaint_flashcards',
                 'status_column' => 'status',
                 'user_id_column' => 'userId',
+                'time_column' => 'time',
             ],
+        ];
+    }
+
+    private function resolveRange(string $range): string
+    {
+        $normalized = strtolower(trim($range));
+        return in_array($normalized, ['all', 'today', 'yesterday', 'last5', 'last30'], true)
+            ? $normalized
+            : 'all';
+    }
+
+    private function applyDateRangeFilter($query, array $sourceMeta, string $range): void
+    {
+        if ($range === 'all') {
+            return;
+        }
+
+        $timeColumn = (string) ($sourceMeta['time_column'] ?? 'time');
+        $bounds = $this->rangeBounds($range);
+        $startDate = $bounds['start'];
+        $endDate = $bounds['end'];
+
+        $dateExpression = "CASE WHEN CAST(`{$timeColumn}` AS CHAR) REGEXP '^[0-9]+$' " .
+            "THEN DATE(FROM_UNIXTIME(`{$timeColumn}`)) ELSE DATE(`{$timeColumn}`) END";
+
+        $query->whereRaw($dateExpression . ' BETWEEN ? AND ?', [$startDate, $endDate]);
+    }
+
+    private function rangeBounds(string $range): array
+    {
+        $today = Carbon::now()->startOfDay();
+
+        if ($range === 'today') {
+            $start = $today->copy();
+            $end = $today->copy();
+        } elseif ($range === 'yesterday') {
+            $start = $today->copy()->subDay();
+            $end = $today->copy()->subDay();
+        } elseif ($range === 'last5') {
+            $start = $today->copy()->subDays(4);
+            $end = $today->copy();
+        } elseif ($range === 'last30') {
+            $start = $today->copy()->subDays(29);
+            $end = $today->copy();
+        } else {
+            $start = Carbon::create(1970, 1, 1);
+            $end = $today->copy();
+        }
+
+        return [
+            'start' => $start->toDateString(),
+            'end' => $end->toDateString(),
         ];
     }
 

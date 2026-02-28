@@ -25,13 +25,23 @@
                             <div class="border-b border-slate-100 p-4">
                                 <div class="flex items-center justify-between gap-3">
                                     <div class="text-sm font-semibold text-slate-700">Tickets</div>
-                                    <button
-                                        type="button"
-                                        id="messengerReloadTickets"
-                                        class="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                    >
-                                        Reload
-                                    </button>
+                                    <div class="flex items-center gap-2">
+                                        <select
+                                            id="messengerLimitSelect"
+                                            class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+                                        >
+                                            <option value="20" selected>20</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                        </select>
+                                        <button
+                                            type="button"
+                                            id="messengerReloadTickets"
+                                            class="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                        >
+                                            Reload
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="mt-3 flex gap-2">
                                     <button
@@ -51,11 +61,41 @@
                                         Closed
                                     </button>
                                 </div>
+                                <div id="messengerOpenRangeFilters" class="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        data-range="today"
+                                        class="messenger-range-btn rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        Today
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-range="yesterday"
+                                        class="messenger-range-btn rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        Yesterday
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-range="last5"
+                                        class="messenger-range-btn rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        Last 5 days
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-range="last30"
+                                        class="messenger-range-btn rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        Last 30 days
+                                    </button>
+                                </div>
                             </div>
 
                             <div class="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
-                                <span>Open: <span id="messengerOpenCount">0</span></span>
-                                <span class="ml-4">Closed: <span id="messengerClosedCount">0</span></span>
+                                <span>Open loaded: <span id="messengerOpenCount">0</span></span>
+                                <span class="ml-4">Closed loaded: <span id="messengerClosedCount">0</span></span>
                             </div>
 
                             <div id="messengerTicketsOpen" class="max-h-[70vh] overflow-y-auto"></div>
@@ -133,11 +173,25 @@
                 var userImageBase = 'https://www.language.onllyons.com/ru/ru-en/dist/images/user-images/';
                 var pollMs = 5000;
 
-                var complaints = [];
                 var currentKey = '';
                 var currentTab = 'open';
+                var currentLimit = 20;
+                var currentOpenRange = 'last30';
                 var pollTimeout = null;
                 var draftByTicket = {};
+
+                var ticketsByTab = {
+                    open: [],
+                    closed: []
+                };
+                var loadedByTab = {
+                    open: false,
+                    closed: false
+                };
+                var tabCounts = {
+                    open: 0,
+                    closed: 0
+                };
 
                 function showToastError(message) {
                     var text = message && String(message).trim() !== '' ? String(message) : 'Request failed.';
@@ -173,8 +227,7 @@
                         return 0;
                     }
                     if (!isNaN(Number(value))) {
-                        var num = Number(value);
-                        return num > 1000000000 ? num : num;
+                        return Number(value);
                     }
                     var parsed = Date.parse(String(value));
                     return isNaN(parsed) ? 0 : Math.floor(parsed / 1000);
@@ -185,12 +238,93 @@
                     if (!ts) {
                         return '-';
                     }
-                    var date = new Date(ts * 1000);
-                    return date.toLocaleString();
+                    return new Date(ts * 1000).toLocaleString();
                 }
 
                 function makeTicketKey(tableName, id) {
                     return String(tableName || '') + '#' + String(id || '');
+                }
+
+                function isOpenTicket(ticket) {
+                    return !!(ticket && ticket.complaint && Number(ticket.complaint.status || 0) === 0);
+                }
+
+                function resolveTicketTab(ticket) {
+                    return isOpenTicket(ticket) ? 'open' : 'closed';
+                }
+
+                function getListForTab(tab) {
+                    return ticketsByTab[tab] || [];
+                }
+
+                function updateCounters() {
+                    $('#messengerOpenCount').text(tabCounts.open);
+                    $('#messengerClosedCount').text(tabCounts.closed);
+                }
+
+                function updateOpenRangeButtons() {
+                    $('#messengerOpenRangeFilters [data-range]').each(function () {
+                        var button = $(this);
+                        var buttonRange = String(button.attr('data-range') || '');
+                        var isActive = buttonRange === currentOpenRange;
+
+                        if (isActive) {
+                            button
+                                .removeClass('border-slate-300 bg-white text-slate-700')
+                                .addClass('border-slate-900 bg-slate-900 text-white');
+                        } else {
+                            button
+                                .removeClass('border-slate-900 bg-slate-900 text-white')
+                                .addClass('border-slate-300 bg-white text-slate-700');
+                        }
+                    });
+                }
+
+                function sortTickets(list) {
+                    list.sort(function (a, b) {
+                        var aTs = Number((a.complaint || {}).time_sort || 0);
+                        var bTs = Number((b.complaint || {}).time_sort || 0);
+                        return bTs - aTs;
+                    });
+                    return list;
+                }
+
+                function setTicketsForTab(tab, tickets) {
+                    var normalized = Array.isArray(tickets) ? tickets.slice() : [];
+                    ticketsByTab[tab] = sortTickets(normalized);
+                    tabCounts[tab] = ticketsByTab[tab].length;
+                    loadedByTab[tab] = true;
+                    updateCounters();
+                }
+
+                function removeTicketFromTab(tab, key) {
+                    var list = getListForTab(tab);
+                    var filtered = [];
+                    for (var i = 0; i < list.length; i += 1) {
+                        var row = list[i];
+                        var rowKey = makeTicketKey((row.complaint || {}).table, (row.complaint || {}).id);
+                        if (rowKey !== key) {
+                            filtered.push(row);
+                        }
+                    }
+                    ticketsByTab[tab] = filtered;
+                    tabCounts[tab] = filtered.length;
+                }
+
+                function upsertTicket(ticket) {
+                    if (!ticket || !ticket.complaint) {
+                        return;
+                    }
+                    var key = makeTicketKey(ticket.complaint.table, ticket.complaint.id);
+                    removeTicketFromTab('open', key);
+                    removeTicketFromTab('closed', key);
+
+                    var tab = resolveTicketTab(ticket);
+                    var list = getListForTab(tab).slice();
+                    list.unshift(ticket);
+                    ticketsByTab[tab] = sortTickets(list);
+                    tabCounts[tab] = ticketsByTab[tab].length;
+                    updateCounters();
                 }
 
                 function saveCurrentDraft() {
@@ -201,35 +335,17 @@
                 }
 
                 function getTicketByKey(key) {
-                    for (var i = 0; i < complaints.length; i += 1) {
-                        var complaint = complaints[i].complaint || {};
-                        if (makeTicketKey(complaint.table, complaint.id) === key) {
-                            return complaints[i];
+                    var tabs = ['open', 'closed'];
+                    for (var t = 0; t < tabs.length; t += 1) {
+                        var list = getListForTab(tabs[t]);
+                        for (var i = 0; i < list.length; i += 1) {
+                            var complaint = list[i].complaint || {};
+                            if (makeTicketKey(complaint.table, complaint.id) === key) {
+                                return list[i];
+                            }
                         }
                     }
                     return null;
-                }
-
-                function replaceTicket(ticket) {
-                    if (!ticket || !ticket.complaint) {
-                        return;
-                    }
-
-                    var key = makeTicketKey(ticket.complaint.table, ticket.complaint.id);
-                    var replaced = false;
-
-                    for (var i = 0; i < complaints.length; i += 1) {
-                        var row = complaints[i];
-                        if (makeTicketKey((row.complaint || {}).table, (row.complaint || {}).id) === key) {
-                            complaints[i] = ticket;
-                            replaced = true;
-                            break;
-                        }
-                    }
-
-                    if (!replaced) {
-                        complaints.push(ticket);
-                    }
                 }
 
                 function complaintTitle(complaint) {
@@ -274,17 +390,7 @@
                     }
 
                     var base = String((complaint || {}).displayName || 'Ticket');
-                    if (theme) {
-                        return base + ': ' + theme;
-                    }
-                    return base;
-                }
-
-                function isOpenTicket(ticket) {
-                    if (!ticket || !ticket.complaint) {
-                        return false;
-                    }
-                    return Number(ticket.complaint.status || 0) === 0;
+                    return theme ? (base + ': ' + theme) : base;
                 }
 
                 function buildTicketRow(ticket) {
@@ -311,57 +417,34 @@
                     html += '<div class="mt-1 line-clamp-2 text-xs text-slate-600">' + nl2brSafe(lastMessageText) + '</div>';
                     html += '</div>';
                     html += '</button>';
-
                     return html;
                 }
 
                 function renderTickets() {
-                    var openList = [];
-                    var closedList = [];
-
-                    for (var i = 0; i < complaints.length; i += 1) {
-                        if (isOpenTicket(complaints[i])) {
-                            openList.push(complaints[i]);
-                        } else {
-                            closedList.push(complaints[i]);
-                        }
-                    }
-
-                    openList.sort(function (a, b) {
-                        var aTs = Number((a.complaint || {}).time_sort || 0);
-                        var bTs = Number((b.complaint || {}).time_sort || 0);
-                        return bTs - aTs;
-                    });
-                    closedList.sort(function (a, b) {
-                        var aTs = Number((a.complaint || {}).time_sort || 0);
-                        var bTs = Number((b.complaint || {}).time_sort || 0);
-                        return bTs - aTs;
-                    });
-
-                    $('#messengerOpenCount').text(openList.length);
-                    $('#messengerClosedCount').text(closedList.length);
-
                     var openHtml = '';
                     var closedHtml = '';
+                    var openList = getListForTab('open');
+                    var closedList = getListForTab('closed');
 
                     if (!openList.length) {
-                        openHtml = '<div class="px-4 py-6 text-sm text-slate-500">No open tickets.</div>';
+                        openHtml = '<div class="px-4 py-6 text-sm text-slate-500">No open tickets loaded.</div>';
                     } else {
-                        for (var j = 0; j < openList.length; j += 1) {
-                            openHtml += buildTicketRow(openList[j]);
+                        for (var i = 0; i < openList.length; i += 1) {
+                            openHtml += buildTicketRow(openList[i]);
                         }
                     }
 
                     if (!closedList.length) {
-                        closedHtml = '<div class="px-4 py-6 text-sm text-slate-500">No closed tickets.</div>';
+                        closedHtml = '<div class="px-4 py-6 text-sm text-slate-500">No closed tickets loaded.</div>';
                     } else {
-                        for (var k = 0; k < closedList.length; k += 1) {
-                            closedHtml += buildTicketRow(closedList[k]);
+                        for (var j = 0; j < closedList.length; j += 1) {
+                            closedHtml += buildTicketRow(closedList[j]);
                         }
                     }
 
                     $('#messengerTicketsOpen').html(openHtml);
                     $('#messengerTicketsClosed').html(closedHtml);
+                    updateCounters();
                 }
 
                 function resolveImageUrl(image) {
@@ -404,10 +487,16 @@
                     }
 
                     $('#messengerMessages').html(html);
-
                     var box = document.getElementById('messengerMessages');
                     if (box) {
                         box.scrollTop = box.scrollHeight;
+                    }
+                }
+
+                function stopPolling() {
+                    if (pollTimeout) {
+                        clearTimeout(pollTimeout);
+                        pollTimeout = null;
                     }
                 }
 
@@ -433,6 +522,7 @@
 
                     var complaint = ticket.complaint;
                     var isOpen = Number(complaint.status || 0) === 0;
+                    var draftValue = draftByTicket[currentKey] || '';
 
                     $('#messengerTicketTitle').text(complaintTitle(complaint));
                     $('#messengerTicketMeta').html(
@@ -455,31 +545,21 @@
                             .text('Closed');
                     }
 
-                    var draftValue = draftByTicket[currentKey] || '';
                     $('#messengerInput').prop('disabled', !isOpen).val(isOpen ? draftValue : '');
                     $('#messengerSendButton').prop('disabled', !isOpen);
                     $('#messengerCloseButton').prop('disabled', !isOpen);
                     renderMessages(ticket.messages || []);
 
-                    if (isOpen) {
+                    if (isOpen && currentTab === 'open') {
                         startPolling();
                     } else {
                         stopPolling();
                     }
                 }
 
-                function pickDefaultTicket() {
-                    var firstOpen = null;
-                    var firstClosed = null;
-                    for (var i = 0; i < complaints.length; i += 1) {
-                        if (!firstOpen && isOpenTicket(complaints[i])) {
-                            firstOpen = complaints[i];
-                        }
-                        if (!firstClosed && !isOpenTicket(complaints[i])) {
-                            firstClosed = complaints[i];
-                        }
-                    }
-                    return firstOpen || firstClosed || null;
+                function pickDefaultTicketForCurrentTab() {
+                    var list = getListForTab(currentTab);
+                    return list.length ? list[0] : null;
                 }
 
                 function postJson(url, payload, onSuccess, onError) {
@@ -506,24 +586,37 @@
                     });
                 }
 
-                function loadTickets(keepCurrent) {
-                    postJson(endpoints.tickets, {}, function (response) {
+                function loadTicketsForTab(tab, keepCurrentSelection) {
+                    var resolvedTab = (tab === 'closed') ? 'closed' : 'open';
+                    var requestRange = resolvedTab === 'open' ? currentOpenRange : 'all';
+
+                    postJson(endpoints.tickets, {
+                        status: resolvedTab,
+                        limit: currentLimit,
+                        range: requestRange
+                    }, function (response) {
                         if (!response.success) {
                             showToastError(response.error_message || 'Failed to load tickets.');
                             return;
                         }
 
-                        complaints = Array.isArray(response.data) ? response.data : [];
+                        setTicketsForTab(resolvedTab, Array.isArray(response.data) ? response.data : []);
                         renderTickets();
 
-                        var selected = null;
-                        if (keepCurrent && currentKey) {
-                            selected = getTicketByKey(currentKey);
-                        }
-                        if (!selected) {
-                            selected = pickDefaultTicket();
+                        if (currentTab !== resolvedTab) {
+                            return;
                         }
 
+                        var selected = null;
+                        if (keepCurrentSelection && currentKey) {
+                            selected = getTicketByKey(currentKey);
+                            if (selected && resolveTicketTab(selected) !== currentTab) {
+                                selected = null;
+                            }
+                        }
+                        if (!selected) {
+                            selected = pickDefaultTicketForCurrentTab();
+                        }
                         showTicket(selected);
                     }, function (xhr) {
                         var errorMessage = 'Failed to load tickets.';
@@ -548,8 +641,14 @@
                         complaintId: ticket.complaint.id
                     }, function (response) {
                         if (response.success && response.data) {
-                            replaceTicket(response.data);
-                            showTicket(response.data);
+                            upsertTicket(response.data);
+                            renderTickets();
+
+                            if (resolveTicketTab(response.data) === currentTab) {
+                                showTicket(response.data);
+                            } else {
+                                showTicket(pickDefaultTicketForCurrentTab());
+                            }
                         }
                         if (typeof done === 'function') {
                             done();
@@ -561,17 +660,10 @@
                     });
                 }
 
-                function stopPolling() {
-                    if (pollTimeout) {
-                        clearTimeout(pollTimeout);
-                        pollTimeout = null;
-                    }
-                }
-
                 function startPolling() {
                     stopPolling();
                     var ticket = getTicketByKey(currentKey);
-                    if (!ticket || !isOpenTicket(ticket)) {
+                    if (!ticket || !isOpenTicket(ticket) || currentTab !== 'open') {
                         return;
                     }
 
@@ -583,11 +675,18 @@
                 }
 
                 function setActiveTab(tab) {
-                    currentTab = tab === 'closed' ? 'closed' : 'open';
+                    var nextTab = tab === 'closed' ? 'closed' : 'open';
+
+                    if (currentTab !== nextTab) {
+                        saveCurrentDraft();
+                    }
+
+                    currentTab = nextTab;
 
                     if (currentTab === 'open') {
                         $('#messengerTicketsOpen').removeClass('hidden');
                         $('#messengerTicketsClosed').addClass('hidden');
+                        $('#messengerOpenRangeFilters').removeClass('hidden');
                         $('#messengerTabOpen')
                             .removeClass('border-slate-300 bg-white text-slate-700')
                             .addClass('border-slate-900 bg-slate-900 text-white');
@@ -597,12 +696,27 @@
                     } else {
                         $('#messengerTicketsOpen').addClass('hidden');
                         $('#messengerTicketsClosed').removeClass('hidden');
+                        $('#messengerOpenRangeFilters').addClass('hidden');
                         $('#messengerTabClosed')
                             .removeClass('border-slate-300 bg-white text-slate-700')
                             .addClass('border-slate-900 bg-slate-900 text-white');
                         $('#messengerTabOpen')
                             .removeClass('border-slate-900 bg-slate-900 text-white')
                             .addClass('border-slate-300 bg-white text-slate-700');
+                    }
+
+                    updateOpenRangeButtons();
+                    renderTickets();
+
+                    var selected = currentKey ? getTicketByKey(currentKey) : null;
+                    if (selected && resolveTicketTab(selected) === currentTab) {
+                        showTicket(selected);
+                    } else {
+                        showTicket(null);
+                    }
+
+                    if (!loadedByTab[currentTab]) {
+                        loadTicketsForTab(currentTab, false);
                     }
                 }
 
@@ -613,9 +727,10 @@
                     }
 
                     var ticket = getTicketByKey(key);
-                    if (!ticket) {
+                    if (!ticket || resolveTicketTab(ticket) !== currentTab) {
                         return;
                     }
+
                     showTicket(ticket);
                 });
 
@@ -628,7 +743,40 @@
                 });
 
                 $('#messengerReloadTickets').on('click', function () {
-                    loadTickets(true);
+                    loadTicketsForTab(currentTab, true);
+                });
+
+                $('#messengerOpenRangeFilters').on('click', '[data-range]', function () {
+                    var nextRange = String($(this).attr('data-range') || '');
+                    if (['today', 'yesterday', 'last5', 'last30'].indexOf(nextRange) === -1) {
+                        return;
+                    }
+                    if (currentOpenRange === nextRange) {
+                        return;
+                    }
+
+                    currentOpenRange = nextRange;
+                    updateOpenRangeButtons();
+
+                    if (currentTab === 'open') {
+                        loadTicketsForTab('open', true);
+                    }
+                });
+
+                $('#messengerLimitSelect').on('change', function () {
+                    var nextLimit = parseInt(String($(this).val() || '20'), 10);
+                    if ([20, 50, 100].indexOf(nextLimit) === -1) {
+                        nextLimit = 20;
+                    }
+                    currentLimit = nextLimit;
+
+                    ticketsByTab = { open: [], closed: [] };
+                    loadedByTab = { open: false, closed: false };
+                    tabCounts = { open: 0, closed: 0 };
+                    updateCounters();
+                    renderTickets();
+                    showTicket(null);
+                    loadTicketsForTab(currentTab, false);
                 });
 
                 $('#messengerInput').on('input', function () {
@@ -664,11 +812,17 @@
                             return;
                         }
 
-                        if (response.data) {
+                        if (response.data && response.data.complaint) {
                             var sentKey = makeTicketKey(response.data.complaint.table, response.data.complaint.id);
                             draftByTicket[sentKey] = '';
-                            replaceTicket(response.data);
-                            showTicket(response.data);
+                            upsertTicket(response.data);
+                            renderTickets();
+
+                            if (resolveTicketTab(response.data) === currentTab) {
+                                showTicket(response.data);
+                            } else {
+                                showTicket(pickDefaultTicketForCurrentTab());
+                            }
                         } else {
                             draftByTicket[currentKey] = '';
                             refreshCurrentTicket();
@@ -705,8 +859,15 @@
 
                         ticket.complaint.status = 1;
                         draftByTicket[currentKey] = '';
-                        replaceTicket(ticket);
-                        showTicket(ticket);
+                        upsertTicket(ticket);
+                        renderTickets();
+
+                        if (currentTab === 'open') {
+                            showTicket(pickDefaultTicketForCurrentTab());
+                        } else {
+                            showTicket(ticket);
+                        }
+
                         showToastSuccess('Ticket closed.');
                     }, function (xhr) {
                         var errorMessage = 'Failed to close ticket.';
@@ -727,8 +888,9 @@
                     }
                 });
 
+                $('#messengerLimitSelect').val(String(currentLimit));
+                updateOpenRangeButtons();
                 setActiveTab('open');
-                loadTickets(false);
             })();
         </script>
     </body>

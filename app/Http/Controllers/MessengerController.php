@@ -14,10 +14,28 @@ class MessengerController extends Controller
 
     public function tickets(MessengerService $service)
     {
+        $status = strtolower(trim((string) request()->input('status', 'open')));
+        if (!in_array($status, ['open', 'closed', 'all'], true)) {
+            $status = 'open';
+        }
+
+        $range = strtolower(trim((string) request()->input('range', 'all')));
+        if (!in_array($range, ['all', 'today', 'yesterday', 'last5', 'last30'], true)) {
+            $range = 'all';
+        }
+
+        $limit = (int) request()->input('limit', 20);
+        if ($limit < 1) {
+            $limit = 20;
+        }
+        if ($limit > 200) {
+            $limit = 200;
+        }
+
         try {
             return response()->json([
                 'success' => true,
-                'data' => $service->listTickets(),
+                'data' => $service->listTickets($status, $limit, $range),
             ]);
         } catch (\Throwable $e) {
             return response()->json([

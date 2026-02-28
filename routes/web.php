@@ -1784,6 +1784,8 @@ Route::middleware('auth')->group(function () {
         return view('games-rules-display');
     });
 
+    Route::view('/game-wikipedia', 'game-wikipedia');
+
     Route::get('/flash-cards', function () {
         return view('flash-cards');
     });

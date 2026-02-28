@@ -23,6 +23,10 @@
                         <i class="fa-solid fa-receipt mr-2"></i>
                         Subscription
                     </a>
+                    <a class="{{ request()->is('messenger*') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/messenger') }}">
+                        <i class="fa-solid fa-comments mr-2"></i>
+                        Messenger
+                    </a>
                     <a class="{{ request()->is('visitors-analytics') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/visitors-analytics') }}">
                         <i class="fa-solid fa-chart-line mr-2"></i>
                         Visitor analytics

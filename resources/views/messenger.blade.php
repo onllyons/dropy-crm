@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+    <head>
+        <x-seo-component title="Messenger" />
+        <x-style-head-dropy />
+        <meta name="csrf-token" content="{{ csrf_token() }}" />
+    </head>
+    <body class="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900">
+        <div class="min-h-screen flex">
+            <x-left-nav />
+
+            <div id="sidebarOverlay" class="fixed inset-0 z-30 hidden bg-slate-900/40 md:hidden"></div>
+
+            <div class="flex-1 md:ml-64">
+                <x-top-nav title="Messenger" />
+
+                <main class="p-4 md:p-6">
+                    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                        <h1 class="text-2xl font-semibold">Messenger</h1>
+                        <p class="mt-2 text-sm text-slate-600">Tickets center: open, inspect, reply, and close support requests.</p>
+                    </div>
+
+                    <div class="mt-6 grid gap-6 xl:grid-cols-[390px,1fr]">
+                        <section class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                            <div class="border-b border-slate-100 p-4">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="text-sm font-semibold text-slate-700">Tickets</div>
+                                    <button
+                                        type="button"
+                                        id="messengerReloadTickets"
+                                        class="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        Reload
+                                    </button>
+                                </div>
+                                <div class="mt-3 flex gap-2">
+                                    <button
+                                        type="button"
+                                        id="messengerTabOpen"
+                                        data-tab="open"
+                                        class="rounded-lg border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
+                                    >
+                                        Open
+                                    </button>
+                                    <button
+                                        type="button"
+                                        id="messengerTabClosed"
+                                        data-tab="closed"
+                                        class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        Closed
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">
+                                <span>Open: <span id="messengerOpenCount">0</span></span>
+                                <span class="ml-4">Closed: <span id="messengerClosedCount">0</span></span>
+                            </div>
+
+                            <div id="messengerTicketsOpen" class="max-h-[70vh] overflow-y-auto"></div>
+                            <div id="messengerTicketsClosed" class="hidden max-h-[70vh] overflow-y-auto"></div>
+                        </section>
+
+                        <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                            <div id="messengerEmptyState" class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                                Select a ticket from the left list.
+                            </div>
+
+                            <div id="messengerDetail" class="hidden">
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <h2 id="messengerTicketTitle" class="text-lg font-semibold text-slate-800">-</h2>
+                                        <div id="messengerTicketMeta" class="mt-2 text-xs text-slate-500"></div>
+                                    </div>
+                                    <span id="messengerTicketStatus" class="rounded-full border px-2.5 py-1 text-xs font-semibold">-</span>
+                                </div>
+
+                                <div id="messengerMessages" class="mt-4 max-h-[55vh] space-y-3 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3"></div>
+
+                                <div class="mt-4">
+                                    <label for="messengerInput" class="text-xs font-semibold uppercase tracking-wide text-slate-500">Reply</label>
+                                    <textarea
+                                        id="messengerInput"
+                                        class="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none ring-0 focus:border-slate-400"
+                                        rows="4"
+                                        placeholder="Type your message"
+                                    ></textarea>
+                                </div>
+
+                                <div class="mt-3 flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        id="messengerSendButton"
+                                        class="rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                                    >
+                                        Send
+                                    </button>
+                                    <button
+                                        type="button"
+                                        id="messengerCloseButton"
+                                        class="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                                    >
+                                        Close ticket
+                                    </button>
+                                    <button
+                                        type="button"
+                                        id="messengerRefreshCurrentButton"
+                                        class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    >
+                                        Refresh current
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </main>
+            </div>
+        </div>
+
+        <x-script-components />
+        <x-offcanvas-right />
+
+        <script>
+            (function () {
+                var endpoints = {
+                    tickets: @json(route('messenger.tickets')),
+                    ticket: @json(route('messenger.ticket')),
+                    sendMessage: @json(route('messenger.send-message')),
+                    closeComplaint: @json(route('messenger.close-complaint'))
+                };
+                var csrfToken = @json(csrf_token());
+                var userImageBase = 'https://www.language.onllyons.com/ru/ru-en/dist/images/user-images/';
+                var pollMs = 5000;
+
+                var complaints = [];
+                var currentKey = '';
+                var currentTab = 'open';
+                var pollTimeout = null;
+
+                function showToastError(message) {
+                    var text = message && String(message).trim() !== '' ? String(message) : 'Request failed.';
+                    if (window.toastr && typeof window.toastr.error === 'function') {
+                        window.toastr.error(text);
+                    } else {
+                        alert(text);
+                    }
+                }
+
+                function showToastSuccess(message) {
+                    var text = message && String(message).trim() !== '' ? String(message) : 'Done.';
+                    if (window.toastr && typeof window.toastr.success === 'function') {
+                        window.toastr.success(text);
+                    }
+                }
+
+                function escapeHtml(text) {
+                    return String(text || '')
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#039;');
+                }
+
+                function nl2brSafe(text) {
+                    return escapeHtml(text).replace(/\r?\n/g, '<br>');
+                }
+
+                function normalizeTimeToTs(value) {
+                    if (value === null || typeof value === 'undefined' || value === '') {
+                        return 0;
+                    }
+                    if (!isNaN(Number(value))) {
+                        var num = Number(value);
+                        return num > 1000000000 ? num : num;
+                    }
+                    var parsed = Date.parse(String(value));
+                    return isNaN(parsed) ? 0 : Math.floor(parsed / 1000);
+                }
+
+                function formatDateTime(value) {
+                    var ts = normalizeTimeToTs(value);
+                    if (!ts) {
+                        return '-';
+                    }
+                    var date = new Date(ts * 1000);
+                    return date.toLocaleString();
+                }
+
+                function makeTicketKey(tableName, id) {
+                    return String(tableName || '') + '#' + String(id || '');
+                }
+
+                function getTicketByKey(key) {
+                    for (var i = 0; i < complaints.length; i += 1) {
+                        var complaint = complaints[i].complaint || {};
+                        if (makeTicketKey(complaint.table, complaint.id) === key) {
+                            return complaints[i];
+                        }
+                    }
+                    return null;
+                }
+
+                function replaceTicket(ticket) {
+                    if (!ticket || !ticket.complaint) {
+                        return;
+                    }
+
+                    var key = makeTicketKey(ticket.complaint.table, ticket.complaint.id);
+                    var replaced = false;
+
+                    for (var i = 0; i < complaints.length; i += 1) {
+                        var row = complaints[i];
+                        if (makeTicketKey((row.complaint || {}).table, (row.complaint || {}).id) === key) {
+                            complaints[i] = ticket;
+                            replaced = true;
+                            break;
+                        }
+                    }
+
+                    if (!replaced) {
+                        complaints.push(ticket);
+                    }
+                }
+
+                function complaintTitle(complaint) {
+                    var tableName = String((complaint || {}).table || '');
+                    var theme = String((complaint || {}).theme || '');
+                    var url = String((complaint || {}).url || '');
+
+                    if (tableName === 'complaint_user') {
+                        if (theme === 'error') {
+                            return 'Произошла ошибка';
+                        }
+                        if (theme === 'suggestion') {
+                            return 'Помогите нам сделать Onllyons лучше';
+                        }
+                    }
+
+                    if (tableName === 'complaint_game') {
+                        var gameMap = {
+                            '/play/chose/': 'Задачи',
+                            '/play/choose-theme/': 'Задачи - Выбрать тему',
+                            '/play/spelling-fun/': 'Написать перевод',
+                            '/play/riddles-translate/': 'Расшифруйте аудио',
+                            '/play/riddles-pick/': 'Переведите аудио',
+                            '/play/riddles-true-false/': 'Верно - Не верно'
+                        };
+                        if (gameMap[url]) {
+                            return 'Игра: ' + gameMap[url];
+                        }
+                    }
+
+                    if (tableName === 'complaint_flashcards') {
+                        if (url.indexOf('/books/') === 0) return 'Карточки: Короткие истории';
+                        if (url.indexOf('/poetry/') === 0) return 'Карточки: Стихи';
+                        if (url.indexOf('/dialogues/') === 0) return 'Карточки: Диалоги';
+                        if (url.indexOf('/flashcard-alphabet/') === 0) return 'Карточки: Алфавит';
+                        if (url.indexOf('/flashcard-phonetic-symbols/') === 0) return 'Карточки: Звуки английского языка';
+                        if (url.indexOf('/flashcard-words-learning/') === 0) return 'Карточки: Слова';
+                        if (url.indexOf('/flashcard-questions-learning/') === 0) return 'Карточки: Важные вопросы';
+                        if (url.indexOf('/flashcard-sentences-learning/') === 0) return 'Карточки: Идиомы';
+                        if (url.indexOf('/flashcard-know-learning/') === 0) return 'Карточки: Важнейшие теоретические идеи';
+                        if (url.indexOf('/course-read-learning/') === 0) return 'Карточки: Основы чтения';
+                    }
+
+                    var base = String((complaint || {}).displayName || 'Ticket');
+                    if (theme) {
+                        return base + ': ' + theme;
+                    }
+                    return base;
+                }
+
+                function isOpenTicket(ticket) {
+                    if (!ticket || !ticket.complaint) {
+                        return false;
+                    }
+                    return Number(ticket.complaint.status || 0) === 0;
+                }
+
+                function buildTicketRow(ticket) {
+                    var complaint = ticket.complaint || {};
+                    var messages = ticket.messages || [];
+                    var lastMessage = messages.length ? messages[messages.length - 1] : null;
+                    var key = makeTicketKey(complaint.table, complaint.id);
+                    var isSelected = key === currentKey;
+                    var selectedClass = isSelected ? 'border-slate-900 bg-slate-100' : 'border-slate-200 bg-white hover:bg-slate-50';
+                    var lastMessageText = lastMessage ? String(lastMessage.message || '') : '';
+                    var sender = lastMessage && lastMessage.user ? String(lastMessage.user.name || '-') : '-';
+
+                    var html = '';
+                    html += '<button type="button" data-ticket-key="' + escapeHtml(key) + '" class="block w-full border-b border-slate-100 px-4 py-3 text-left">';
+                    html += '<div class="rounded-xl border px-3 py-2 transition ' + selectedClass + '">';
+                    html += '<div class="flex items-start justify-between gap-2">';
+                    html += '<div class="min-w-0">';
+                    html += '<div class="truncate text-sm font-semibold text-slate-800">' + escapeHtml(complaintTitle(complaint)) + '</div>';
+                    html += '<div class="mt-1 text-xs text-slate-500">#' + escapeHtml(complaint.id) + ' | User ' + escapeHtml(complaint.userId) + '</div>';
+                    html += '</div>';
+                    html += '<div class="shrink-0 text-[11px] text-slate-500">' + escapeHtml(formatDateTime(complaint.time)) + '</div>';
+                    html += '</div>';
+                    html += '<div class="mt-2 text-xs text-slate-500">From: ' + escapeHtml(sender) + '</div>';
+                    html += '<div class="mt-1 line-clamp-2 text-xs text-slate-600">' + nl2brSafe(lastMessageText) + '</div>';
+                    html += '</div>';
+                    html += '</button>';
+
+                    return html;
+                }
+
+                function renderTickets() {
+                    var openList = [];
+                    var closedList = [];
+
+                    for (var i = 0; i < complaints.length; i += 1) {
+                        if (isOpenTicket(complaints[i])) {
+                            openList.push(complaints[i]);
+                        } else {
+                            closedList.push(complaints[i]);
+                        }
+                    }
+
+                    openList.sort(function (a, b) {
+                        var aTs = Number((a.complaint || {}).time_sort || 0);
+                        var bTs = Number((b.complaint || {}).time_sort || 0);
+                        return bTs - aTs;
+                    });
+                    closedList.sort(function (a, b) {
+                        var aTs = Number((a.complaint || {}).time_sort || 0);
+                        var bTs = Number((b.complaint || {}).time_sort || 0);
+                        return bTs - aTs;
+                    });
+
+                    $('#messengerOpenCount').text(openList.length);
+                    $('#messengerClosedCount').text(closedList.length);
+
+                    var openHtml = '';
+                    var closedHtml = '';
+
+                    if (!openList.length) {
+                        openHtml = '<div class="px-4 py-6 text-sm text-slate-500">No open tickets.</div>';
+                    } else {
+                        for (var j = 0; j < openList.length; j += 1) {
+                            openHtml += buildTicketRow(openList[j]);
+                        }
+                    }
+
+                    if (!closedList.length) {
+                        closedHtml = '<div class="px-4 py-6 text-sm text-slate-500">No closed tickets.</div>';
+                    } else {
+                        for (var k = 0; k < closedList.length; k += 1) {
+                            closedHtml += buildTicketRow(closedList[k]);
+                        }
+                    }
+
+                    $('#messengerTicketsOpen').html(openHtml);
+                    $('#messengerTicketsClosed').html(closedHtml);
+                }
+
+                function resolveImageUrl(image) {
+                    var value = String(image || '').trim();
+                    if (value === '') {
+                        value = 'default.png';
+                    }
+                    if (value.indexOf('http://') === 0 || value.indexOf('https://') === 0) {
+                        return value;
+                    }
+                    return userImageBase + value.replace(/^\/+/, '');
+                }
+
+                function renderMessages(messages) {
+                    if (!messages || !messages.length) {
+                        $('#messengerMessages').html('<div class="py-4 text-center text-sm text-slate-500">No messages.</div>');
+                        return;
+                    }
+
+                    var html = '';
+                    for (var i = 0; i < messages.length; i += 1) {
+                        var message = messages[i] || {};
+                        var user = message.user || {};
+                        var isUser = String(message.type || '') === 'user';
+                        var wrapperClass = isUser ? 'justify-start' : 'justify-end';
+                        var bubbleClass = isUser
+                            ? 'border-slate-200 bg-white text-slate-700'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-900';
+
+                        html += '<div class="flex ' + wrapperClass + '">';
+                        html += '<div class="max-w-[90%] rounded-xl border px-3 py-2 shadow-sm ' + bubbleClass + '">';
+                        html += '<div class="mb-1 flex items-center gap-2 text-[11px]">';
+                        html += '<img src="' + escapeHtml(resolveImageUrl(user.image)) + '" alt="" class="h-6 w-6 rounded-full object-cover bg-slate-200" />';
+                        html += '<span class="font-semibold">' + escapeHtml(user.name || '-') + '</span>';
+                        html += '<span class="text-slate-500">' + escapeHtml(formatDateTime(message.time)) + '</span>';
+                        html += '</div>';
+                        html += '<div class="text-sm leading-6">' + nl2brSafe(message.message || '') + '</div>';
+                        html += '</div>';
+                        html += '</div>';
+                    }
+
+                    $('#messengerMessages').html(html);
+
+                    var box = document.getElementById('messengerMessages');
+                    if (box) {
+                        box.scrollTop = box.scrollHeight;
+                    }
+                }
+
+                function showTicket(ticket) {
+                    if (!ticket || !ticket.complaint) {
+                        $('#messengerDetail').addClass('hidden');
+                        $('#messengerEmptyState').removeClass('hidden');
+                        currentKey = '';
+                        stopPolling();
+                        return;
+                    }
+
+                    currentKey = makeTicketKey(ticket.complaint.table, ticket.complaint.id);
+                    renderTickets();
+
+                    $('#messengerEmptyState').addClass('hidden');
+                    $('#messengerDetail').removeClass('hidden');
+
+                    var complaint = ticket.complaint;
+                    var isOpen = Number(complaint.status || 0) === 0;
+
+                    $('#messengerTicketTitle').text(complaintTitle(complaint));
+                    $('#messengerTicketMeta').html(
+                        'ID: <span class="font-semibold text-slate-700">#' + escapeHtml(complaint.id) + '</span>' +
+                        ' | Table: <span class="font-semibold text-slate-700">' + escapeHtml(complaint.table) + '</span>' +
+                        ' | User: <span class="font-semibold text-slate-700">' + escapeHtml(complaint.userId) + '</span>' +
+                        ' | Time: <span class="font-semibold text-slate-700">' + escapeHtml(formatDateTime(complaint.time)) + '</span>' +
+                        (complaint.url ? ' | URL: <span class="font-semibold text-slate-700">' + escapeHtml(complaint.url) + '</span>' : '')
+                    );
+
+                    if (isOpen) {
+                        $('#messengerTicketStatus')
+                            .removeClass()
+                            .addClass('rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700')
+                            .text('Open');
+                    } else {
+                        $('#messengerTicketStatus')
+                            .removeClass()
+                            .addClass('rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700')
+                            .text('Closed');
+                    }
+
+                    $('#messengerInput').prop('disabled', !isOpen).val('');
+                    $('#messengerSendButton').prop('disabled', !isOpen);
+                    $('#messengerCloseButton').prop('disabled', !isOpen);
+                    renderMessages(ticket.messages || []);
+
+                    if (isOpen) {
+                        startPolling();
+                    } else {
+                        stopPolling();
+                    }
+                }
+
+                function pickDefaultTicket() {
+                    var firstOpen = null;
+                    var firstClosed = null;
+                    for (var i = 0; i < complaints.length; i += 1) {
+                        if (!firstOpen && isOpenTicket(complaints[i])) {
+                            firstOpen = complaints[i];
+                        }
+                        if (!firstClosed && !isOpenTicket(complaints[i])) {
+                            firstClosed = complaints[i];
+                        }
+                    }
+                    return firstOpen || firstClosed || null;
+                }
+
+                function postJson(url, payload, onSuccess, onError) {
+                    var data = payload || {};
+                    data._token = csrfToken;
+
+                    $.ajax({
+                        type: 'POST',
+                        url: url,
+                        dataType: 'json',
+                        data: data,
+                        success: function (response) {
+                            if (typeof onSuccess === 'function') {
+                                onSuccess(response || {});
+                            }
+                        },
+                        error: function (xhr) {
+                            if (typeof onError === 'function') {
+                                onError(xhr);
+                            } else {
+                                showToastError('Request failed.');
+                            }
+                        }
+                    });
+                }
+
+                function loadTickets(keepCurrent) {
+                    postJson(endpoints.tickets, {}, function (response) {
+                        if (!response.success) {
+                            showToastError(response.error_message || 'Failed to load tickets.');
+                            return;
+                        }
+
+                        complaints = Array.isArray(response.data) ? response.data : [];
+                        renderTickets();
+
+                        var selected = null;
+                        if (keepCurrent && currentKey) {
+                            selected = getTicketByKey(currentKey);
+                        }
+                        if (!selected) {
+                            selected = pickDefaultTicket();
+                        }
+
+                        showTicket(selected);
+                    }, function (xhr) {
+                        var errorMessage = 'Failed to load tickets.';
+                        if (xhr && xhr.responseJSON && xhr.responseJSON.error_message) {
+                            errorMessage = xhr.responseJSON.error_message;
+                        }
+                        showToastError(errorMessage);
+                    });
+                }
+
+                function refreshCurrentTicket(done) {
+                    var ticket = getTicketByKey(currentKey);
+                    if (!ticket || !ticket.complaint) {
+                        if (typeof done === 'function') {
+                            done();
+                        }
+                        return;
+                    }
+
+                    postJson(endpoints.ticket, {
+                        table: ticket.complaint.table,
+                        complaintId: ticket.complaint.id
+                    }, function (response) {
+                        if (response.success && response.data) {
+                            replaceTicket(response.data);
+                            showTicket(response.data);
+                        }
+                        if (typeof done === 'function') {
+                            done();
+                        }
+                    }, function () {
+                        if (typeof done === 'function') {
+                            done();
+                        }
+                    });
+                }
+
+                function stopPolling() {
+                    if (pollTimeout) {
+                        clearTimeout(pollTimeout);
+                        pollTimeout = null;
+                    }
+                }
+
+                function startPolling() {
+                    stopPolling();
+                    var ticket = getTicketByKey(currentKey);
+                    if (!ticket || !isOpenTicket(ticket)) {
+                        return;
+                    }
+
+                    pollTimeout = setTimeout(function () {
+                        refreshCurrentTicket(function () {
+                            startPolling();
+                        });
+                    }, pollMs);
+                }
+
+                function setActiveTab(tab) {
+                    currentTab = tab === 'closed' ? 'closed' : 'open';
+
+                    if (currentTab === 'open') {
+                        $('#messengerTicketsOpen').removeClass('hidden');
+                        $('#messengerTicketsClosed').addClass('hidden');
+                        $('#messengerTabOpen')
+                            .removeClass('border-slate-300 bg-white text-slate-700')
+                            .addClass('border-slate-900 bg-slate-900 text-white');
+                        $('#messengerTabClosed')
+                            .removeClass('border-slate-900 bg-slate-900 text-white')
+                            .addClass('border-slate-300 bg-white text-slate-700');
+                    } else {
+                        $('#messengerTicketsOpen').addClass('hidden');
+                        $('#messengerTicketsClosed').removeClass('hidden');
+                        $('#messengerTabClosed')
+                            .removeClass('border-slate-300 bg-white text-slate-700')
+                            .addClass('border-slate-900 bg-slate-900 text-white');
+                        $('#messengerTabOpen')
+                            .removeClass('border-slate-900 bg-slate-900 text-white')
+                            .addClass('border-slate-300 bg-white text-slate-700');
+                    }
+                }
+
+                $('#messengerTicketsOpen, #messengerTicketsClosed').on('click', '[data-ticket-key]', function () {
+                    var key = String($(this).attr('data-ticket-key') || '');
+                    if (!key) {
+                        return;
+                    }
+
+                    var ticket = getTicketByKey(key);
+                    if (!ticket) {
+                        return;
+                    }
+                    showTicket(ticket);
+                });
+
+                $('#messengerTabOpen').on('click', function () {
+                    setActiveTab('open');
+                });
+
+                $('#messengerTabClosed').on('click', function () {
+                    setActiveTab('closed');
+                });
+
+                $('#messengerReloadTickets').on('click', function () {
+                    loadTickets(true);
+                });
+
+                $('#messengerRefreshCurrentButton').on('click', function () {
+                    refreshCurrentTicket();
+                });
+
+                $('#messengerSendButton').on('click', function () {
+                    var ticket = getTicketByKey(currentKey);
+                    if (!ticket || !ticket.complaint || !isOpenTicket(ticket)) {
+                        return;
+                    }
+
+                    var message = String($('#messengerInput').val() || '').trim();
+                    if (!message) {
+                        showToastError('Введите сообщение.');
+                        return;
+                    }
+
+                    postJson(endpoints.sendMessage, {
+                        table: ticket.complaint.table,
+                        complaintId: ticket.complaint.id,
+                        message: message
+                    }, function (response) {
+                        if (!response.success) {
+                            showToastError(response.error_message || 'Failed to send message.');
+                            return;
+                        }
+
+                        if (response.data) {
+                            replaceTicket(response.data);
+                            showTicket(response.data);
+                        } else {
+                            refreshCurrentTicket();
+                        }
+
+                        showToastSuccess('Message sent.');
+                    }, function (xhr) {
+                        var errorMessage = 'Failed to send message.';
+                        if (xhr && xhr.responseJSON && xhr.responseJSON.error_message) {
+                            errorMessage = xhr.responseJSON.error_message;
+                        }
+                        showToastError(errorMessage);
+                    });
+                });
+
+                $('#messengerCloseButton').on('click', function () {
+                    var ticket = getTicketByKey(currentKey);
+                    if (!ticket || !ticket.complaint || !isOpenTicket(ticket)) {
+                        return;
+                    }
+
+                    if (!window.confirm('Close this ticket?')) {
+                        return;
+                    }
+
+                    postJson(endpoints.closeComplaint, {
+                        table: ticket.complaint.table,
+                        complaintId: ticket.complaint.id
+                    }, function (response) {
+                        if (!response.success) {
+                            showToastError(response.error_message || 'Failed to close ticket.');
+                            return;
+                        }
+
+                        ticket.complaint.status = 1;
+                        replaceTicket(ticket);
+                        showTicket(ticket);
+                        showToastSuccess('Ticket closed.');
+                    }, function (xhr) {
+                        var errorMessage = 'Failed to close ticket.';
+                        if (xhr && xhr.responseJSON && xhr.responseJSON.error_message) {
+                            errorMessage = xhr.responseJSON.error_message;
+                        }
+                        showToastError(errorMessage);
+                    });
+                });
+
+                document.addEventListener('visibilitychange', function () {
+                    if (document.visibilityState === 'visible') {
+                        refreshCurrentTicket(function () {
+                            startPolling();
+                        });
+                    } else {
+                        stopPolling();
+                    }
+                });
+
+                setActiveTab('open');
+                loadTickets(false);
+            })();
+        </script>
+    </body>
+</html>

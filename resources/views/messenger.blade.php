@@ -137,6 +137,7 @@
                 var currentKey = '';
                 var currentTab = 'open';
                 var pollTimeout = null;
+                var draftByTicket = {};
 
                 function showToastError(message) {
                     var text = message && String(message).trim() !== '' ? String(message) : 'Request failed.';
@@ -190,6 +191,13 @@
 
                 function makeTicketKey(tableName, id) {
                     return String(tableName || '') + '#' + String(id || '');
+                }
+
+                function saveCurrentDraft() {
+                    if (!currentKey) {
+                        return;
+                    }
+                    draftByTicket[currentKey] = String($('#messengerInput').val() || '');
                 }
 
                 function getTicketByKey(key) {
@@ -405,6 +413,7 @@
 
                 function showTicket(ticket) {
                     if (!ticket || !ticket.complaint) {
+                        saveCurrentDraft();
                         $('#messengerDetail').addClass('hidden');
                         $('#messengerEmptyState').removeClass('hidden');
                         currentKey = '';
@@ -412,7 +421,11 @@
                         return;
                     }
 
-                    currentKey = makeTicketKey(ticket.complaint.table, ticket.complaint.id);
+                    var nextKey = makeTicketKey(ticket.complaint.table, ticket.complaint.id);
+                    if (currentKey && currentKey !== nextKey) {
+                        saveCurrentDraft();
+                    }
+                    currentKey = nextKey;
                     renderTickets();
 
                     $('#messengerEmptyState').addClass('hidden');
@@ -442,7 +455,8 @@
                             .text('Closed');
                     }
 
-                    $('#messengerInput').prop('disabled', !isOpen).val('');
+                    var draftValue = draftByTicket[currentKey] || '';
+                    $('#messengerInput').prop('disabled', !isOpen).val(isOpen ? draftValue : '');
                     $('#messengerSendButton').prop('disabled', !isOpen);
                     $('#messengerCloseButton').prop('disabled', !isOpen);
                     renderMessages(ticket.messages || []);
@@ -617,6 +631,13 @@
                     loadTickets(true);
                 });
 
+                $('#messengerInput').on('input', function () {
+                    if (!currentKey) {
+                        return;
+                    }
+                    draftByTicket[currentKey] = String($(this).val() || '');
+                });
+
                 $('#messengerRefreshCurrentButton').on('click', function () {
                     refreshCurrentTicket();
                 });
@@ -644,9 +665,12 @@
                         }
 
                         if (response.data) {
+                            var sentKey = makeTicketKey(response.data.complaint.table, response.data.complaint.id);
+                            draftByTicket[sentKey] = '';
                             replaceTicket(response.data);
                             showTicket(response.data);
                         } else {
+                            draftByTicket[currentKey] = '';
                             refreshCurrentTicket();
                         }
 
@@ -680,6 +704,7 @@
                         }
 
                         ticket.complaint.status = 1;
+                        draftByTicket[currentKey] = '';
                         replaceTicket(ticket);
                         showTicket(ticket);
                         showToastSuccess('Ticket closed.');

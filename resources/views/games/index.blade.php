@@ -30,6 +30,10 @@
                                 Game Wikipedia
                                 <i class="fa-solid fa-arrow-right text-slate-400"></i>
                             </a>
+                            <a class="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white" href="{{ url('/message_games') }}">
+                                message_games
+                                <i class="fa-solid fa-arrow-right text-slate-400"></i>
+                            </a>
                         </div>
                     </div>
                 </main>

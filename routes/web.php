@@ -2,8 +2,11 @@
 
 use App\Http\Controllers\AllLessonsController;
 use App\Http\Controllers\CourseController;
+use App\Http\Controllers\DropyAppController;
+use App\Http\Controllers\ExcludedMobileScreensController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\MessengerController;
+use App\Http\Controllers\MessageGamesController;
 use App\Http\Controllers\UserBehaviorController;
 use App\Http\Controllers\UserCourseHistoryController;
 use App\Http\Controllers\UserSubscriptionController;
@@ -56,6 +59,17 @@ Route::middleware('auth')->group(function () {
         ]);
     });
 
+    Route::get('/dropy-app', [DropyAppController::class, 'index'])
+        ->name('dropy-app.index');
+    Route::post('/dropy-app/pr-map', [DropyAppController::class, 'storePrMap'])
+        ->name('dropy-app.pr-map.store');
+    Route::post('/dropy-app/pr-map/{id}', [DropyAppController::class, 'updatePrMap'])
+        ->where('id', '[0-9]+')
+        ->name('dropy-app.pr-map.update');
+    Route::delete('/dropy-app/pr-map/{id}', [DropyAppController::class, 'destroyPrMap'])
+        ->where('id', '[0-9]+')
+        ->name('dropy-app.pr-map.destroy');
+
     Route::get('/models', function () {
         return view('models');
     });
@@ -65,15 +79,26 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::get('/structure-in-app', function () {
-        return view('structure-in-app');
+        return view('app.structure-in-app');
     });
 
     Route::get('/app-update-info', function () {
-        return view('app-update-info');
+        return view('app.app-update-info');
     });
 
+    Route::get('/excluded-mobile-screens', [ExcludedMobileScreensController::class, 'index'])
+        ->name('excluded-mobile-screens.index');
+    Route::post('/excluded-mobile-screens', [ExcludedMobileScreensController::class, 'store'])
+        ->name('excluded-mobile-screens.store');
+    Route::post('/excluded-mobile-screens/{id}', [ExcludedMobileScreensController::class, 'update'])
+        ->where('id', '[0-9]+')
+        ->name('excluded-mobile-screens.update');
+    Route::delete('/excluded-mobile-screens/{id}', [ExcludedMobileScreensController::class, 'destroy'])
+        ->where('id', '[0-9]+')
+        ->name('excluded-mobile-screens.destroy');
+
     Route::get('/website-app-views', function () {
-        return view('website-app-views');
+        return view('app.website-app-views');
     });
 
     Route::get('/users', function (Request $request) {
@@ -1773,18 +1798,21 @@ Route::middleware('auth')->group(function () {
     });
 
     Route::get('/games', function () {
-        return view('games');
+        return view('games.index');
     });
 
     Route::get('/games-table-name', function () {
-        return view('games-table-name');
+        return view('games.table-name');
     });
 
     Route::get('/games-rules-display', function () {
-        return view('games-rules-display');
+        return view('games.rules-display');
     });
 
-    Route::view('/game-wikipedia', 'game-wikipedia');
+    Route::view('/game-wikipedia', 'games.wikipedia');
+
+    Route::get('/message_games', [MessageGamesController::class, 'index'])
+        ->name('message_games.index');
 
     Route::get('/flash-cards', function () {
         return view('flash-cards');

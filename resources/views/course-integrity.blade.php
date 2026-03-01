@@ -149,6 +149,102 @@
                         </div>
                     </div>
 
+                    <div class="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm">
+                        <div class="text-sm font-semibold text-indigo-900">0.2) course_test file_path check by extension</div>
+                        <div class="mt-1 text-xs text-indigo-800">
+                            <span class="font-semibold">mp4/mov/webm/mkv</span> -&gt; <span class="font-semibold">.../course/content/videos/</span> ·
+                            <span class="font-semibold">jpg/jpeg/png/webp/gif/bmp/svg</span> -&gt; <span class="font-semibold">.../course/content/images/</span> ·
+                            <span class="font-semibold">mp3/wav/ogg/m4a/aac</span> -&gt; <span class="font-semibold">.../course/content/audios/</span>
+                        </div>
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                            <div class="rounded-xl border border-indigo-200 bg-white p-3">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">course_test rows</div>
+                                <div class="mt-1 text-xl font-semibold text-indigo-900">{{ number_format((int) ($testContentRowsCount ?? 0)) }}</div>
+                            </div>
+                            <div class="rounded-xl border border-indigo-200 bg-white p-3">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Missing file_path</div>
+                                <div class="mt-1 text-xl font-semibold text-indigo-900">{{ number_format((int) ($testContentMissingPathCount ?? 0)) }}</div>
+                            </div>
+                            <div class="rounded-xl border border-indigo-200 bg-white p-3">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Unknown extension</div>
+                                <div class="mt-1 text-xl font-semibold text-indigo-900">{{ number_format((int) ($testContentUnknownExtensionCount ?? 0)) }}</div>
+                            </div>
+                            <div class="rounded-xl border border-indigo-200 bg-white p-3">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Missing on server (HTTP)</div>
+                                <div class="mt-1 text-xl font-semibold text-indigo-900">{{ number_format((int) ($testContentMissingOnServerCount ?? 0)) }}</div>
+                                <div class="mt-1 text-[11px] text-indigo-700">Checked: {{ number_format((int) ($testContentCheckedRowsCount ?? 0)) }}</div>
+                            </div>
+                            <div class="rounded-xl border border-indigo-200 bg-white p-3">
+                                <div class="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Problems total</div>
+                                <div class="mt-1 text-xl font-semibold text-indigo-900">{{ number_format((int) ($testContentProblemsCount ?? 0)) }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div class="text-sm font-semibold text-slate-700">0.3) course_test content problems list</div>
+                        <div class="mt-1 text-xs text-slate-500">Rows with missing path, unknown extension, or file missing on server.</div>
+                        <div class="mt-4 overflow-x-auto">
+                            <table class="min-w-full text-sm">
+                                <thead>
+                                    <tr class="border-b border-slate-200 text-left text-slate-500">
+                                        <th class="pb-2 pr-3">ID</th>
+                                        <th class="pb-2 pr-3">issue</th>
+                                        <th class="pb-2 pr-3">course_url</th>
+                                        <th class="pb-2 pr-3">series</th>
+                                        <th class="pb-2 pr-3">variant</th>
+                                        <th class="pb-2 pr-3">file_path</th>
+                                        <th class="pb-2 pr-3">resolved URL</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    @forelse (($testContentProblems ?? collect()) as $row)
+                                        <tr>
+                                            <td class="py-2 pr-3 text-slate-600">{{ $row->id ?? '-' }}</td>
+                                            <td class="py-2 pr-3">
+                                                @php
+                                                    $issue = (string) ($row->issue ?? '');
+                                                @endphp
+                                                @if ($issue === 'missing_file_path')
+                                                    <span class="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">missing_file_path</span>
+                                                @elseif ($issue === 'unknown_extension')
+                                                    <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">unknown_extension</span>
+                                                @elseif ($issue === 'missing_on_server')
+                                                    <span class="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">missing_on_server</span>
+                                                @else
+                                                    <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">{{ $issue !== '' ? $issue : '-' }}</span>
+                                                @endif
+                                            </td>
+                                            <td class="py-2 pr-3 text-slate-700">{{ $row->course_url !== null && $row->course_url !== '' ? $row->course_url : '-' }}</td>
+                                            <td class="py-2 pr-3 text-slate-600">{{ $row->series ?? '-' }}</td>
+                                            <td class="py-2 pr-3 text-slate-600">{{ $row->variant ?? '-' }}</td>
+                                            <td class="py-2 pr-3 text-slate-600">
+                                                @if (!empty($row->file_path))
+                                                    <span class="inline-block max-w-[420px] truncate" title="{{ $row->file_path }}">{{ $row->file_path }}</span>
+                                                @else
+                                                    -
+                                                @endif
+                                            </td>
+                                            <td class="py-2 pr-3 text-slate-600">
+                                                @if (!empty($row->check_url))
+                                                    <a href="{{ $row->check_url }}" target="_blank" rel="noreferrer" class="inline-block max-w-[420px] truncate text-sky-600 hover:underline" title="{{ $row->check_url }}">
+                                                        {{ $row->check_url }}
+                                                    </a>
+                                                @else
+                                                    -
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="7" class="py-3 text-slate-500">No course_test content problems found.</td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <div class="rounded-2xl border border-slate-200 bg-white p-4">
                             <div class="text-xs font-semibold text-slate-500">Lessons without category</div>

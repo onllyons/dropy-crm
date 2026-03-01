@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 class CourseIntegrityService
 {
     private const MEDIA_REAL_CHECK_BASE = 'https://www.language.onllyons.com/ru/ru-en/packs/assest/course';
+    private const PROD_BASE_URL = 'https://www.language.onllyons.com';
 
     public function buildReport(bool $realCheckEnabled = true, int $realCheckLimit = 500): array
     {
@@ -144,6 +145,83 @@ class CourseIntegrityService
             })
             ->values();
 
+        $testContentBase = DB::connection('tenant')
+            ->table('course_test');
+
+        $testContentRowsCount = (clone $testContentBase)->count();
+
+        $testContentMissingPathRows = (clone $testContentBase)
+            ->select(
+                'id',
+                'course_url',
+                'series',
+                'variant',
+                'file_path',
+                DB::raw("NULL AS check_url"),
+                DB::raw("'missing_file_path' AS issue")
+            )
+            ->whereRaw("TRIM(COALESCE(file_path, '')) = ''")
+            ->orderBy('id')
+            ->get();
+
+        $testContentMissingPathCount = $testContentMissingPathRows->count();
+        $testContentCheckedRowsCount = 0;
+        $testContentUnknownExtensionCount = 0;
+        $testContentMissingOnServerCount = 0;
+        $testContentProblemsChecked = collect();
+
+        if ($realCheckEnabled) {
+            $testRowsToCheck = DB::connection('tenant')
+                ->table('course_test')
+                ->select('id', 'course_url', 'series', 'variant', 'file_path')
+                ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
+                ->orderBy('id')
+                ->limit($realCheckLimit)
+                ->get();
+
+            $testContentCheckedRowsCount = $testRowsToCheck->count();
+            $urlStatusCache = [];
+
+            foreach ($testRowsToCheck as $row) {
+                $filePath = trim((string) ($row->file_path ?? ''));
+                $resolved = $this->resolveCourseTestContentUrl($filePath);
+                $checkUrl = $resolved['url'] ?? null;
+                $issue = $resolved['issue'] ?? null;
+
+                if ($issue === 'unknown_extension') {
+                    $row->issue = 'unknown_extension';
+                    $row->check_url = null;
+                    $testContentProblemsChecked->push($row);
+                    $testContentUnknownExtensionCount++;
+                    continue;
+                }
+
+                if ($checkUrl === null) {
+                    continue;
+                }
+
+                if (!array_key_exists($checkUrl, $urlStatusCache)) {
+                    $urlStatusCache[$checkUrl] = $this->urlExists($checkUrl);
+                }
+
+                if (!$urlStatusCache[$checkUrl]) {
+                    $row->issue = 'missing_on_server';
+                    $row->check_url = $checkUrl;
+                    $testContentProblemsChecked->push($row);
+                    $testContentMissingOnServerCount++;
+                }
+            }
+        }
+
+        $testContentProblems = $testContentMissingPathRows
+            ->concat($testContentProblemsChecked)
+            ->sortBy(function ($row) {
+                $courseUrl = (string) ($row->course_url ?? '');
+                $id = (int) ($row->id ?? 0);
+                return $courseUrl . '|' . str_pad((string) $id, 10, '0', STR_PAD_LEFT);
+            })
+            ->values();
+
         $lessonsBase = DB::connection('tenant')
             ->table('course as c')
             ->leftJoin('category_course as cc', 'cc.var_idtest_1_1', '=', 'c.category_url')
@@ -213,6 +291,13 @@ class CourseIntegrityService
             'mediaMissingOnServerCount' => (int) $mediaMissingOnServer->count(),
             'mediaPathProblems' => $mediaPathProblems,
             'mediaPathProblemsCount' => $mediaPathProblems->count(),
+            'testContentRowsCount' => (int) $testContentRowsCount,
+            'testContentMissingPathCount' => (int) $testContentMissingPathCount,
+            'testContentCheckedRowsCount' => (int) $testContentCheckedRowsCount,
+            'testContentUnknownExtensionCount' => (int) $testContentUnknownExtensionCount,
+            'testContentMissingOnServerCount' => (int) $testContentMissingOnServerCount,
+            'testContentProblems' => $testContentProblems,
+            'testContentProblemsCount' => (int) $testContentProblems->count(),
             'lessonsWithoutCategory' => $lessonsWithoutCategory,
             'lessonsWithoutCategoryCount' => $lessonsWithoutCategory->count(),
             'carouselWithoutLesson' => $carouselWithoutLesson,
@@ -232,7 +317,7 @@ class CourseIntegrityService
         }
 
         if (preg_match('/^https?:\/\//i', $path) === 1) {
-            return $path;
+            return $this->normalizeAbsoluteUrl($path);
         }
 
         if (strpos($path, '/ru/ru-en/packs/assest/course/') === 0) {
@@ -261,6 +346,86 @@ class CourseIntegrityService
         }
 
         return 'https://www.language.onllyons.com/' . $normalized;
+    }
+
+    private function resolveCourseTestContentUrl(string $filePath): array
+    {
+        $path = trim($filePath);
+        if ($path === '') {
+            return ['url' => null, 'issue' => 'missing_file_path'];
+        }
+
+        $pathOnly = parse_url($path, PHP_URL_PATH);
+        $pathForExt = is_string($pathOnly) && $pathOnly !== '' ? $pathOnly : $path;
+        $extension = strtolower((string) pathinfo($pathForExt, PATHINFO_EXTENSION));
+
+        $videoExtensions = ['mp4', 'mov', 'webm', 'mkv'];
+        $audioExtensions = ['mp3', 'wav', 'ogg', 'm4a', 'aac'];
+        $imageExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg'];
+
+        $bucket = null;
+        if (in_array($extension, $videoExtensions, true)) {
+            $bucket = 'videos';
+        } elseif (in_array($extension, $audioExtensions, true)) {
+            $bucket = 'audios';
+        } elseif (in_array($extension, $imageExtensions, true)) {
+            $bucket = 'images';
+        }
+
+        if ($bucket === null) {
+            return ['url' => null, 'issue' => 'unknown_extension'];
+        }
+
+        if (preg_match('/^https?:\/\//i', $path) === 1) {
+            return ['url' => $this->normalizeAbsoluteUrl($path), 'issue' => null];
+        }
+
+        if (strpos($path, '/ru/ru-en/packs/assest/course/content/') === 0) {
+            return ['url' => self::PROD_BASE_URL . $path, 'issue' => null];
+        }
+
+        if (strpos($path, '/packs/assest/course/content/') === 0) {
+            return ['url' => self::PROD_BASE_URL . '/ru/ru-en' . $path, 'issue' => null];
+        }
+
+        if (strpos($path, 'packs/assest/course/content/') === 0) {
+            return ['url' => self::PROD_BASE_URL . '/ru/ru-en/' . ltrim($path, '/'), 'issue' => null];
+        }
+
+        if (strpos($path, '/course/content/') === 0) {
+            return ['url' => self::PROD_BASE_URL . '/ru/ru-en/packs/assest' . $path, 'issue' => null];
+        }
+
+        if (strpos($path, 'course/content/') === 0) {
+            return ['url' => self::PROD_BASE_URL . '/ru/ru-en/packs/assest/' . ltrim($path, '/'), 'issue' => null];
+        }
+
+        if (strpos($path, 'content/') === 0) {
+            return ['url' => self::MEDIA_REAL_CHECK_BASE . '/' . ltrim($path, '/'), 'issue' => null];
+        }
+
+        if (strpos($path, '/') === 0) {
+            return ['url' => self::PROD_BASE_URL . $path, 'issue' => null];
+        }
+
+        if (strpos($path, 'videos/') === 0 || strpos($path, 'images/') === 0 || strpos($path, 'audios/') === 0) {
+            return ['url' => self::MEDIA_REAL_CHECK_BASE . '/content/' . ltrim($path, '/'), 'issue' => null];
+        }
+
+        return ['url' => self::MEDIA_REAL_CHECK_BASE . '/content/' . $bucket . '/' . ltrim($path, '/'), 'issue' => null];
+    }
+
+    private function normalizeAbsoluteUrl(string $url): string
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        if ($host === 'localhost' || $host === '127.0.0.1' || $host === 'db') {
+            $path = (string) parse_url($url, PHP_URL_PATH);
+            if ($path !== '') {
+                return self::PROD_BASE_URL . $path;
+            }
+        }
+
+        return $url;
     }
 
     private function urlExists(string $url): bool

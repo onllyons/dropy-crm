@@ -8,6 +8,21 @@ class CourseIntegrityService
 {
     public function buildReport(): array
     {
+        $videoPathIsValidSql = "
+            (
+                file_path LIKE '%/course/video-lessons/%'
+                OR file_path LIKE '%video-lessons/%'
+                OR file_path NOT LIKE '%/%'
+            )
+        ";
+        $audioPathIsValidSql = "
+            (
+                file_path LIKE '%/course/audio-lessons/%'
+                OR file_path LIKE '%audio-lessons/%'
+                OR file_path NOT LIKE '%/%'
+            )
+        ";
+
         $mediaBase = DB::connection('tenant')
             ->table('course_carousel')
             ->whereIn('variant', ['v', 'a']);
@@ -36,12 +51,12 @@ class CourseIntegrityService
 
         $videoInvalidPathCount = (clone $videoBase)
             ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
-            ->where('file_path', 'not like', '%/course/video-lessons/%')
+            ->whereRaw("NOT ({$videoPathIsValidSql})")
             ->count();
 
         $audioInvalidPathCount = (clone $audioBase)
             ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
-            ->where('file_path', 'not like', '%/course/audio-lessons/%')
+            ->whereRaw("NOT ({$audioPathIsValidSql})")
             ->count();
 
         $mediaPathProblems = (clone $mediaBase)
@@ -54,8 +69,8 @@ class CourseIntegrityService
                 DB::raw("
                     CASE
                         WHEN TRIM(COALESCE(file_path, '')) = '' THEN 'missing_file_path'
-                        WHEN variant = 'v' AND file_path NOT LIKE '%/course/video-lessons/%' THEN 'invalid_video_path'
-                        WHEN variant = 'a' AND file_path NOT LIKE '%/course/audio-lessons/%' THEN 'invalid_audio_path'
+                        WHEN variant = 'v' AND TRIM(COALESCE(file_path, '')) <> '' AND NOT ({$videoPathIsValidSql}) THEN 'invalid_video_path'
+                        WHEN variant = 'a' AND TRIM(COALESCE(file_path, '')) <> '' AND NOT ({$audioPathIsValidSql}) THEN 'invalid_audio_path'
                         ELSE 'ok'
                     END AS issue
                 ")
@@ -65,12 +80,12 @@ class CourseIntegrityService
                     ->orWhere(function ($subQuery) {
                         $subQuery->where('variant', 'v')
                             ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
-                            ->where('file_path', 'not like', '%/course/video-lessons/%');
+                            ->whereRaw("NOT ({$videoPathIsValidSql})");
                     })
                     ->orWhere(function ($subQuery) {
                         $subQuery->where('variant', 'a')
                             ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
-                            ->where('file_path', 'not like', '%/course/audio-lessons/%');
+                            ->whereRaw("NOT ({$audioPathIsValidSql})");
                     });
             })
             ->orderBy('variant')

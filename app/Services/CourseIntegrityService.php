@@ -72,7 +72,6 @@ class CourseIntegrityService
                 DB::raw("NULL AS check_url"),
                 DB::raw("
                     CASE
-                        WHEN TRIM(COALESCE(file_path, '')) = '' THEN 'missing_file_path'
                         WHEN variant = 'v' AND TRIM(COALESCE(file_path, '')) <> '' AND NOT ({$videoPathIsValidSql}) THEN 'invalid_video_path'
                         WHEN variant = 'a' AND TRIM(COALESCE(file_path, '')) <> '' AND NOT ({$audioPathIsValidSql}) THEN 'invalid_audio_path'
                         ELSE 'ok'
@@ -80,8 +79,7 @@ class CourseIntegrityService
                 ")
             )
             ->where(function ($query) use ($videoPathIsValidSql, $audioPathIsValidSql) {
-                $query->whereRaw("TRIM(COALESCE(file_path, '')) = ''")
-                    ->orWhere(function ($subQuery) use ($videoPathIsValidSql) {
+                $query->where(function ($subQuery) use ($videoPathIsValidSql) {
                         $subQuery->where('variant', 'v')
                             ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
                             ->whereRaw("NOT ({$videoPathIsValidSql})");
@@ -149,22 +147,9 @@ class CourseIntegrityService
             ->table('course_test');
 
         $testContentRowsCount = (clone $testContentBase)->count();
-
-        $testContentMissingPathRows = (clone $testContentBase)
-            ->select(
-                'id',
-                'course_url',
-                'series',
-                'variant',
-                'file_path',
-                DB::raw("NULL AS check_url"),
-                DB::raw("'missing_file_path' AS issue")
-            )
+        $testContentMissingPathCount = (clone $testContentBase)
             ->whereRaw("TRIM(COALESCE(file_path, '')) = ''")
-            ->orderBy('id')
-            ->get();
-
-        $testContentMissingPathCount = $testContentMissingPathRows->count();
+            ->count();
         $testContentCheckedRowsCount = 0;
         $testContentUnknownExtensionCount = 0;
         $testContentMissingOnServerCount = 0;
@@ -213,8 +198,7 @@ class CourseIntegrityService
             }
         }
 
-        $testContentProblems = $testContentMissingPathRows
-            ->concat($testContentProblemsChecked)
+        $testContentProblems = $testContentProblemsChecked
             ->sortBy(function ($row) {
                 $courseUrl = (string) ($row->course_url ?? '');
                 $id = (int) ($row->id ?? 0);
@@ -352,7 +336,7 @@ class CourseIntegrityService
     {
         $path = trim($filePath);
         if ($path === '') {
-            return ['url' => null, 'issue' => 'missing_file_path'];
+            return ['url' => null, 'issue' => null];
         }
 
         $pathOnly = parse_url($path, PHP_URL_PATH);

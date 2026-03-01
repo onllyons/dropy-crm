@@ -3,19 +3,25 @@
 namespace App\Http\Controllers;
 
 use App\Services\CourseIntegrityService;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class CourseIntegrityController extends Controller
 {
-    public function index(CourseIntegrityService $service): View
+    public function index(Request $request, CourseIntegrityService $service): View
     {
         $error = null;
+        $realCheckEnabled = $request->boolean('real_check', true);
+        $realCheckLimit = (int) $request->query('real_check_limit', 500);
+        $realCheckLimit = max(10, min($realCheckLimit, 5000));
         $videoRowsCount = 0;
         $audioRowsCount = 0;
         $videoMissingPathCount = 0;
         $audioMissingPathCount = 0;
         $videoInvalidPathCount = 0;
         $audioInvalidPathCount = 0;
+        $mediaCheckedRowsCount = 0;
+        $mediaMissingOnServerCount = 0;
         $mediaPathProblems = collect();
         $mediaPathProblemsCount = 0;
         $lessonsWithoutCategory = collect();
@@ -28,7 +34,7 @@ class CourseIntegrityController extends Controller
         $duplicateLessonUrlsCount = 0;
 
         try {
-            $report = $service->buildReport();
+            $report = $service->buildReport($realCheckEnabled, $realCheckLimit);
 
             $videoRowsCount = (int) ($report['videoRowsCount'] ?? 0);
             $audioRowsCount = (int) ($report['audioRowsCount'] ?? 0);
@@ -36,6 +42,8 @@ class CourseIntegrityController extends Controller
             $audioMissingPathCount = (int) ($report['audioMissingPathCount'] ?? 0);
             $videoInvalidPathCount = (int) ($report['videoInvalidPathCount'] ?? 0);
             $audioInvalidPathCount = (int) ($report['audioInvalidPathCount'] ?? 0);
+            $mediaCheckedRowsCount = (int) ($report['mediaCheckedRowsCount'] ?? 0);
+            $mediaMissingOnServerCount = (int) ($report['mediaMissingOnServerCount'] ?? 0);
             $mediaPathProblems = $report['mediaPathProblems'] ?? collect();
             $mediaPathProblemsCount = (int) ($report['mediaPathProblemsCount'] ?? 0);
             $lessonsWithoutCategory = $report['lessonsWithoutCategory'] ?? collect();
@@ -57,6 +65,10 @@ class CourseIntegrityController extends Controller
             'audioMissingPathCount' => $audioMissingPathCount,
             'videoInvalidPathCount' => $videoInvalidPathCount,
             'audioInvalidPathCount' => $audioInvalidPathCount,
+            'realCheckEnabled' => $realCheckEnabled,
+            'realCheckLimit' => $realCheckLimit,
+            'mediaCheckedRowsCount' => $mediaCheckedRowsCount,
+            'mediaMissingOnServerCount' => $mediaMissingOnServerCount,
             'mediaPathProblems' => $mediaPathProblems,
             'mediaPathProblemsCount' => $mediaPathProblemsCount,
             'lessonsWithoutCategory' => $lessonsWithoutCategory,

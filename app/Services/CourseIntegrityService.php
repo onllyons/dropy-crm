@@ -6,7 +6,9 @@ use Illuminate\Support\Facades\DB;
 
 class CourseIntegrityService
 {
-    public function buildReport(): array
+    private const MEDIA_REAL_CHECK_BASE = 'https://www.language.onllyons.com/ru/ru-en/packs/assest/course';
+
+    public function buildReport(bool $realCheckEnabled = true, int $realCheckLimit = 500): array
     {
         $videoPathIsValidSql = "
             (
@@ -66,6 +68,7 @@ class CourseIntegrityService
                 'series',
                 'variant',
                 'file_path',
+                DB::raw("NULL AS check_url"),
                 DB::raw("
                     CASE
                         WHEN TRIM(COALESCE(file_path, '')) = '' THEN 'missing_file_path'
@@ -75,14 +78,14 @@ class CourseIntegrityService
                     END AS issue
                 ")
             )
-            ->where(function ($query) {
+            ->where(function ($query) use ($videoPathIsValidSql, $audioPathIsValidSql) {
                 $query->whereRaw("TRIM(COALESCE(file_path, '')) = ''")
-                    ->orWhere(function ($subQuery) {
+                    ->orWhere(function ($subQuery) use ($videoPathIsValidSql) {
                         $subQuery->where('variant', 'v')
                             ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
                             ->whereRaw("NOT ({$videoPathIsValidSql})");
                     })
-                    ->orWhere(function ($subQuery) {
+                    ->orWhere(function ($subQuery) use ($audioPathIsValidSql) {
                         $subQuery->where('variant', 'a')
                             ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
                             ->whereRaw("NOT ({$audioPathIsValidSql})");
@@ -92,6 +95,54 @@ class CourseIntegrityService
             ->orderBy('course_url')
             ->orderBy('id')
             ->get();
+
+        $realCheckLimit = max(10, min($realCheckLimit, 5000));
+        $mediaCheckedRowsCount = 0;
+        $mediaMissingOnServer = collect();
+
+        if ($realCheckEnabled) {
+            $rowsToCheck = DB::connection('tenant')
+                ->table('course_carousel')
+                ->select('id', 'course_url', 'series', 'variant', 'file_path')
+                ->whereIn('variant', ['v', 'a'])
+                ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
+                ->orderBy('id')
+                ->limit($realCheckLimit)
+                ->get();
+
+            $mediaCheckedRowsCount = $rowsToCheck->count();
+            $urlStatusCache = [];
+
+            foreach ($rowsToCheck as $row) {
+                $variant = trim((string) ($row->variant ?? ''));
+                $filePath = trim((string) ($row->file_path ?? ''));
+                $checkUrl = $this->resolveMediaUrl($variant, $filePath);
+
+                if ($checkUrl === null) {
+                    continue;
+                }
+
+                if (!array_key_exists($checkUrl, $urlStatusCache)) {
+                    $urlStatusCache[$checkUrl] = $this->urlExists($checkUrl);
+                }
+
+                if (!$urlStatusCache[$checkUrl]) {
+                    $row->issue = 'missing_on_server';
+                    $row->check_url = $checkUrl;
+                    $mediaMissingOnServer->push($row);
+                }
+            }
+        }
+
+        $mediaPathProblems = $mediaPathProblems
+            ->concat($mediaMissingOnServer)
+            ->sortBy(function ($row) {
+                $variant = (string) ($row->variant ?? '');
+                $courseUrl = (string) ($row->course_url ?? '');
+                $id = (int) ($row->id ?? 0);
+                return $variant . '|' . $courseUrl . '|' . str_pad((string) $id, 10, '0', STR_PAD_LEFT);
+            })
+            ->values();
 
         $lessonsBase = DB::connection('tenant')
             ->table('course as c')
@@ -156,6 +207,10 @@ class CourseIntegrityService
             'audioMissingPathCount' => (int) $audioMissingPathCount,
             'videoInvalidPathCount' => (int) $videoInvalidPathCount,
             'audioInvalidPathCount' => (int) $audioInvalidPathCount,
+            'realCheckEnabled' => $realCheckEnabled,
+            'realCheckLimit' => $realCheckLimit,
+            'mediaCheckedRowsCount' => (int) $mediaCheckedRowsCount,
+            'mediaMissingOnServerCount' => (int) $mediaMissingOnServer->count(),
             'mediaPathProblems' => $mediaPathProblems,
             'mediaPathProblemsCount' => $mediaPathProblems->count(),
             'lessonsWithoutCategory' => $lessonsWithoutCategory,
@@ -167,5 +222,81 @@ class CourseIntegrityService
             'duplicateLessonUrls' => $duplicateLessonUrls,
             'duplicateLessonUrlsCount' => $duplicateLessonUrls->count(),
         ];
+    }
+
+    private function resolveMediaUrl(string $variant, string $filePath): ?string
+    {
+        $path = trim($filePath);
+        if ($path === '') {
+            return null;
+        }
+
+        if (preg_match('/^https?:\/\//i', $path) === 1) {
+            return $path;
+        }
+
+        if (strpos($path, '/ru/ru-en/packs/assest/course/') === 0) {
+            return 'https://www.language.onllyons.com' . $path;
+        }
+
+        if (strpos($path, '/packs/assest/course/') === 0) {
+            return 'https://www.language.onllyons.com/ru/ru-en' . $path;
+        }
+
+        if (strpos($path, 'packs/assest/course/') === 0) {
+            return 'https://www.language.onllyons.com/ru/ru-en/' . ltrim($path, '/');
+        }
+
+        if (strpos($path, '/') === 0) {
+            return 'https://www.language.onllyons.com' . $path;
+        }
+
+        $normalized = ltrim($path, '/');
+        if ($variant === 'v') {
+            return self::MEDIA_REAL_CHECK_BASE . '/video-lessons/' . $normalized;
+        }
+
+        if ($variant === 'a') {
+            return self::MEDIA_REAL_CHECK_BASE . '/audio-lessons/' . $normalized;
+        }
+
+        return 'https://www.language.onllyons.com/' . $normalized;
+    }
+
+    private function urlExists(string $url): bool
+    {
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_NOBODY, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 6);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'DropyCRM-CourseIntegrity/1.0');
+
+            curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+
+            if (($httpCode >= 200 && $httpCode < 400) || $httpCode === 401 || $httpCode === 403) {
+                return true;
+            }
+
+            return false;
+        }
+
+        $headers = @get_headers($url);
+        if (!is_array($headers) || empty($headers[0])) {
+            return false;
+        }
+
+        if (preg_match('/\\s(\\d{3})\\s/', (string) $headers[0], $matches) !== 1) {
+            return false;
+        }
+
+        $httpCode = (int) ($matches[1] ?? 0);
+        return ($httpCode >= 200 && $httpCode < 400) || $httpCode === 401 || $httpCode === 403;
     }
 }

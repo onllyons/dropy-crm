@@ -26,6 +26,9 @@
                                     <a class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100" href="{{ url('/course-history') }}">
                                         course_history
                                     </a>
+                                    <a class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100" href="{{ route('course.integrity') }}">
+                                        debut integrity
+                                    </a>
                                 </div>
                             </div>
                             <div class="text-xs font-semibold text-slate-500">
@@ -98,12 +101,17 @@
                                                 ->unique()
                                                 ->sort()
                                                 ->values();
+                                            $lessonCrmUrl = route('lesson.show', ['slug' => $lesson->url]);
                                         @endphp
                                         <li class="rounded-lg border border-slate-200 p-3">
                                             <div class="flex items-start justify-between gap-3">
                                                 <div>
-                                                    <div class="text-sm font-semibold text-slate-700">{{ $lesson->title }}</div>
-                                                    <div class="mt-1 text-xs text-slate-500">{{ $lesson->url }}</div>
+                                                    <a href="{{ $lessonCrmUrl }}" class="text-sm font-semibold text-slate-700 hover:text-sky-700 hover:underline">
+                                                        {{ $lesson->title }}
+                                                    </a>
+                                                    <a href="{{ $lessonCrmUrl }}" class="mt-1 block text-xs text-slate-500 hover:text-sky-700 hover:underline">
+                                                        {{ $lesson->url }}
+                                                    </a>
                                                     <div class="mt-1 text-[11px] text-slate-400">ID: {{ $lesson->id }}</div>
                                                 </div>
                                                 <div class="flex flex-col gap-1 text-[11px] text-slate-500">

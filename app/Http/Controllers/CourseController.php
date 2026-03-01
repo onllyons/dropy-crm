@@ -40,9 +40,25 @@ class CourseController extends Controller
                 ->table('course')
                 ->select('id', 'category_url', 'url', 'title')
                 ->orderBy('category_url')
-                ->orderBy('title')
+                ->orderBy('id')
                 ->get()
                 ->groupBy('category_url');
+
+            $firstLessonIdByCategory = DB::connection('tenant')
+                ->table('course')
+                ->select('category_url', DB::raw('MIN(id) as min_id'))
+                ->whereNotNull('category_url')
+                ->where('category_url', '!=', '')
+                ->groupBy('category_url')
+                ->pluck('min_id', 'category_url');
+
+            $categories = $categories
+                ->sortBy(function ($category) use ($firstLessonIdByCategory) {
+                    $categoryCode = (string) ($category->var_idtest_1_1 ?? '');
+                    $firstId = $firstLessonIdByCategory->get($categoryCode);
+                    return $firstId !== null ? (int) $firstId : PHP_INT_MAX;
+                })
+                ->values();
 
             $carouselCounts = DB::connection('tenant')
                 ->table('course_carousel as cc')

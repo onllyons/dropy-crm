@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AllLessonsController;
 use App\Http\Controllers\CourseController;
+use App\Http\Controllers\CourseIntegrityController;
 use App\Http\Controllers\DropyAppController;
 use App\Http\Controllers\ExcludedMobileScreensController;
 use App\Http\Controllers\LessonController;
@@ -1272,6 +1273,8 @@ Route::middleware('auth')->group(function () {
     })->where('id', '[0-9]+');
 
     Route::get('/course', [CourseController::class, 'index']);
+    Route::get('/course-integrity', [CourseIntegrityController::class, 'index'])
+        ->name('course.integrity');
     Route::post('/course/{id}/update', [CourseController::class, 'updateCourse'])
         ->where('id', '[0-9]+')
         ->name('course.update');

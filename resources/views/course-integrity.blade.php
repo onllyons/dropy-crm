@@ -19,6 +19,7 @@
                             <div>
                                 <h1 class="text-2xl font-semibold">Course Integrity Debut</h1>
                                 <p class="mt-2 text-sm text-slate-600">Orphan checks: course/category, carousel/course, tests/course, duplicate lesson URLs.</p>
+                                <a href="https://yarn.co/">https://yarn.co/</a>
                             </div>
                             <a class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white" href="{{ url('/course') }}">
                                 Back to course

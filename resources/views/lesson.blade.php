@@ -423,7 +423,10 @@
                             <article class="h-full rounded-xl border border-[#e7b583] p-4 shadow-sm" style="background:#ffe2c4;">
                                 <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                                     <div class="text-xs font-semibold text-slate-700">Row #${index + 1}</div>
-                                    <span class="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700">Variant: ${variant}</span>
+                                    <div class="flex flex-wrap gap-2">
+                                        <span class="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700">ID: ${escapeHtml(String(item?.id ?? '-'))}</span>
+                                        <span class="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700">Variant: ${variant}</span>
+                                    </div>
                                 </div>
 
                                 <div class="grid gap-2 text-sm text-slate-800">

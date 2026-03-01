@@ -316,6 +316,7 @@ class MessengerService
             'url' => isset($row->url) ? $row->url : null,
             'course_id_slide' => isset($row->course_id_slide) ? $row->course_id_slide : null,
             'course_url' => isset($row->course_url) ? $row->course_url : null,
+            'course_series' => isset($row->course_series) ? $row->course_series : null,
         ];
     }
 
@@ -351,7 +352,8 @@ class MessengerService
                     DB::raw('NULL as gameId'),
                     DB::raw('NULL as url'),
                     'course_id_slide',
-                    'course_url'
+                    'course_url',
+                    'course_series'
                 );
         }
 

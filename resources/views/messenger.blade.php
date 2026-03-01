@@ -116,6 +116,7 @@
                                     <span id="messengerTicketStatus" class="rounded-full border px-2.5 py-1 text-xs font-semibold">-</span>
                                 </div>
 
+                                <div id="messengerCourseInfo" class="mt-2 hidden text-xs text-slate-500"></div>
                                 <div id="messengerMessages" class="mt-4 max-h-[55vh] space-y-3 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3"></div>
 
                                 <div class="mt-4">
@@ -172,6 +173,8 @@
                 var csrfToken = @json(csrf_token());
                 var userImageBase = 'https://www.language.onllyons.com/ru/ru-en/dist/images/user-images/';
                 var pollMs = 5000;
+                var userDetailBase = @json(url('/users'));
+                var lessonBaseUrl = @json(url('/lesson-crm'));
 
                 var currentKey = '';
                 var currentTab = 'open';
@@ -493,6 +496,40 @@
                     }
                 }
 
+                function renderCourseInfo(complaint) {
+                    var container = $('#messengerCourseInfo');
+                    if (!complaint || (complaint.table || '') !== 'complaint_user_course') {
+                        container.addClass('hidden').html('');
+                        return;
+                    }
+
+                    var lines = [];
+                    if (complaint.course_id_slide || complaint.course_id_slide === 0) {
+                        lines.push('Slide ID: ' + escapeHtml(String(complaint.course_id_slide)));
+                    }
+                        if (complaint.course_url) {
+                            var slug = String(complaint.course_url || '').trim();
+                            if (slug !== '' && slug.indexOf('/') === -1) {
+                                var lessonLink = lessonBaseUrl + '/' + encodeURIComponent(slug);
+                                lines.push('Course URL: <a href="' + lessonLink + '" target="_blank" rel="noreferrer" class="text-sky-600 underline">' + escapeHtml(slug) + '</a>');
+                            } else {
+                                var safeUrl = escapeHtml(slug);
+                                lines.push('Course URL slug: ' + safeUrl);
+                            }
+                        }
+                    if (complaint.course_series || complaint.course_series === 0) {
+                        lines.push('Series: ' + escapeHtml(String(complaint.course_series)));
+                    }
+
+                    if (!lines.length) {
+                        lines.push('Course metadata is empty.');
+                    }
+
+                    container.removeClass('hidden').html(lines.map(function (line) {
+                        return '<div>' + line + '</div>';
+                    }).join(''));
+                }
+
                 function stopPolling() {
                     if (pollTimeout) {
                         clearTimeout(pollTimeout);
@@ -525,13 +562,19 @@
                     var draftValue = draftByTicket[currentKey] || '';
 
                     $('#messengerTicketTitle').text(complaintTitle(complaint));
+                    var userId = Number(complaint.userId || 0);
+                    var userMeta = '<span class="font-semibold text-slate-700">' + escapeHtml(complaint.userId) + '</span>';
+                    if (userId > 0) {
+                        userMeta += ' <a href="' + userDetailBase + '/' + encodeURIComponent(userId) + '" target="_blank" rel="noreferrer" class="text-sky-600 hover:underline text-xs font-semibold">(profil)</a>';
+                    }
                     $('#messengerTicketMeta').html(
                         'ID: <span class="font-semibold text-slate-700">#' + escapeHtml(complaint.id) + '</span>' +
                         ' | Table: <span class="font-semibold text-slate-700">' + escapeHtml(complaint.table) + '</span>' +
-                        ' | User: <span class="font-semibold text-slate-700">' + escapeHtml(complaint.userId) + '</span>' +
+                        ' | User: ' + userMeta +
                         ' | Time: <span class="font-semibold text-slate-700">' + escapeHtml(formatDateTime(complaint.time)) + '</span>' +
                         (complaint.url ? ' | URL: <span class="font-semibold text-slate-700">' + escapeHtml(complaint.url) + '</span>' : '')
                     );
+                    renderCourseInfo(complaint);
 
                     if (isOpen) {
                         $('#messengerTicketStatus')

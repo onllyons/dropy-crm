@@ -51,7 +51,7 @@
                         <i class="fa-solid fa-gamepad mr-2"></i>
                         Games
                     </a>
-                    <a class="{{ request()->is('flash-cards') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/flash-cards') }}">
+                    <a class="{{ request()->is('flash-cards*') ? 'block rounded-lg bg-slate-900 px-3 py-2 text-white' : 'block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-100' }}" href="{{ url('/flash-cards') }}">
                         <i class="fa-solid fa-clone mr-2"></i>
                         Flash-cards
                     </a>

@@ -405,6 +405,16 @@
                     var selectedClass = isSelected ? 'border-slate-900 bg-slate-100' : 'border-slate-200 bg-white hover:bg-slate-50';
                     var lastMessageText = lastMessage ? String(lastMessage.message || '') : '';
                     var sender = lastMessage && lastMessage.user ? String(lastMessage.user.name || '-') : '-';
+                    var lastType = lastMessage ? String(lastMessage.type || '') : '';
+                    var isOpen = Number(complaint.status || 0) === 0;
+                    var waitingReply = isOpen && lastType === 'user';
+                    var supportReplied = isOpen && lastType === 'support';
+                    var waitingBadge = waitingReply
+                        ? '<span class="rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">Asteapta raspuns</span>'
+                        : '';
+                    var repliedBadge = supportReplied
+                        ? '<span class="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Raspuns trimis</span>'
+                        : '';
 
                     var html = '';
                     html += '<button type="button" data-ticket-key="' + escapeHtml(key) + '" class="block w-full border-b border-slate-100 px-4 py-3 text-left">';
@@ -413,6 +423,9 @@
                     html += '<div class="min-w-0">';
                     html += '<div class="truncate text-sm font-semibold text-slate-800">' + escapeHtml(complaintTitle(complaint)) + '</div>';
                     html += '<div class="mt-1 text-xs text-slate-500">#' + escapeHtml(complaint.id) + ' | User ' + escapeHtml(complaint.userId) + '</div>';
+                    if (waitingBadge || repliedBadge) {
+                        html += '<div class="mt-2 flex flex-wrap gap-1">' + waitingBadge + repliedBadge + '</div>';
+                    }
                     html += '</div>';
                     html += '<div class="shrink-0 text-[11px] text-slate-500">' + escapeHtml(formatDateTime(complaint.time)) + '</div>';
                     html += '</div>';

@@ -5,6 +5,7 @@ use App\Http\Controllers\CourseController;
 use App\Http\Controllers\CourseIntegrityController;
 use App\Http\Controllers\DropyAppController;
 use App\Http\Controllers\ExcludedMobileScreensController;
+use App\Http\Controllers\FlashCardsController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\MessengerController;
 use App\Http\Controllers\MessageGamesController;
@@ -1817,9 +1818,16 @@ Route::middleware('auth')->group(function () {
     Route::get('/message_games', [MessageGamesController::class, 'index'])
         ->name('message_games.index');
 
-    Route::get('/flash-cards', function () {
-        return view('flash-cards');
-    });
+    Route::get('/flash-cards', [FlashCardsController::class, 'index'])
+        ->name('flash-cards.index');
+    Route::get('/flash-cards/debut-integrity', [FlashCardsController::class, 'debutIntegrity'])
+        ->name('flash-cards.debut-integrity');
+    Route::get('/flash-cards/words-lessons/{lessonId}', [FlashCardsController::class, 'showWordsLesson'])
+        ->where('lessonId', '[0-9]+')
+        ->name('flash-cards.words-lessons.show');
+    Route::get('/flash-cards/phrases-lessons/{lessonId}', [FlashCardsController::class, 'showPhrasesLesson'])
+        ->where('lessonId', '[0-9]+')
+        ->name('flash-cards.phrases-lessons.show');
 
     Route::post('/tenant/switch', function (Request $request) {
         $allowed = array_keys(config('dropy.tenants.allowed', []));

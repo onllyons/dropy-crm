@@ -49,7 +49,11 @@
                             </label>
                             <label class="text-xs font-semibold text-slate-700">
                                 Rows limit
-                                <input type="number" min="10" max="5000" name="real_check_limit" value="{{ (int) ($realCheckLimit ?? 500) }}" class="ml-2 w-24 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-normal text-slate-700" />
+                                <input type="number" min="10" max="50000" name="real_check_limit" value="{{ (int) ($realCheckLimit ?? 500) }}" class="ml-2 w-24 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-normal text-slate-700" />
+                            </label>
+                            <label class="text-xs font-semibold text-slate-700">
+                                Start after ID
+                                <input type="number" min="0" step="1" name="start_after_id" value="{{ (int) ($startAfterId ?? 0) }}" class="ml-2 w-28 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-normal text-slate-700" />
                             </label>
                             <button type="submit" class="rounded-lg border border-rose-200 bg-rose-100 px-3 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-200">
                                 Run check
@@ -80,8 +84,15 @@
                             <div class="rounded-xl border border-rose-200 bg-white p-3">
                                 <div class="text-[11px] font-semibold uppercase tracking-wide text-rose-500">Missing on server (HTTP)</div>
                                 <div class="mt-1 text-xl font-semibold text-rose-800">{{ number_format((int) ($mediaMissingOnServerCount ?? 0)) }}</div>
-                                <div class="mt-1 text-[11px] text-rose-600">Within checked limit</div>
+                                <div class="mt-1 text-[11px] text-rose-600">IDs checked: {{ $mediaCheckedMinId ?? '-' }} - {{ $mediaCheckedMaxId ?? '-' }}</div>
                             </div>
+                        </div>
+                        <div class="mt-3">
+                            <a href="{{ route('course.integrity', ['real_check' => !empty($realCheckEnabled) ? 1 : 0, 'real_check_limit' => (int) ($realCheckLimit ?? 500), 'start_after_id' => (int) ($nextStartAfterId ?? 0)]) }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                <i class="fa-solid fa-forward-step"></i>
+                                Next batch
+                            </a>
+                            <span class="ml-2 text-xs text-slate-500">next start_after_id: {{ (int) ($nextStartAfterId ?? 0) }}</span>
                         </div>
                     </div>
 
@@ -172,7 +183,9 @@
                             <div class="rounded-xl border border-indigo-200 bg-white p-3">
                                 <div class="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Missing on server (HTTP)</div>
                                 <div class="mt-1 text-xl font-semibold text-indigo-900">{{ number_format((int) ($testContentMissingOnServerCount ?? 0)) }}</div>
-                                <div class="mt-1 text-[11px] text-indigo-700">Checked: {{ number_format((int) ($testContentCheckedRowsCount ?? 0)) }}</div>
+                                <div class="mt-1 text-[11px] text-indigo-700">
+                                    Checked: {{ number_format((int) ($testContentCheckedRowsCount ?? 0)) }} · IDs: {{ $testContentCheckedMinId ?? '-' }} - {{ $testContentCheckedMaxId ?? '-' }}
+                                </div>
                             </div>
                             <div class="rounded-xl border border-indigo-200 bg-white p-3">
                                 <div class="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Problems total</div>

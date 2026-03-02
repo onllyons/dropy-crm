@@ -9,7 +9,7 @@ class CourseIntegrityService
     private const MEDIA_REAL_CHECK_BASE = 'https://www.language.onllyons.com/ru/ru-en/packs/assest/course';
     private const PROD_BASE_URL = 'https://www.language.onllyons.com';
 
-    public function buildReport(bool $realCheckEnabled = true, int $realCheckLimit = 500): array
+    public function buildReport(bool $realCheckEnabled = true, int $realCheckLimit = 500, int $startAfterId = 0): array
     {
         $videoPathIsValidSql = "
             (
@@ -95,8 +95,11 @@ class CourseIntegrityService
             ->orderBy('id')
             ->get();
 
-        $realCheckLimit = max(10, min($realCheckLimit, 5000));
+        $realCheckLimit = max(10, min($realCheckLimit, 50000));
+        $startAfterId = max(0, $startAfterId);
         $mediaCheckedRowsCount = 0;
+        $mediaCheckedMinId = null;
+        $mediaCheckedMaxId = null;
         $mediaMissingOnServer = collect();
 
         if ($realCheckEnabled) {
@@ -105,11 +108,14 @@ class CourseIntegrityService
                 ->select('id', 'course_url', 'series', 'variant', 'file_path')
                 ->whereIn('variant', ['v', 'a'])
                 ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
+                ->where('id', '>', $startAfterId)
                 ->orderBy('id')
                 ->limit($realCheckLimit)
                 ->get();
 
             $mediaCheckedRowsCount = $rowsToCheck->count();
+            $mediaCheckedMinId = $rowsToCheck->min('id');
+            $mediaCheckedMaxId = $rowsToCheck->max('id');
             $urlStatusCache = [];
 
             foreach ($rowsToCheck as $row) {
@@ -151,6 +157,8 @@ class CourseIntegrityService
             ->whereRaw("TRIM(COALESCE(file_path, '')) = ''")
             ->count();
         $testContentCheckedRowsCount = 0;
+        $testContentCheckedMinId = null;
+        $testContentCheckedMaxId = null;
         $testContentUnknownExtensionCount = 0;
         $testContentMissingOnServerCount = 0;
         $testContentProblemsChecked = collect();
@@ -160,11 +168,14 @@ class CourseIntegrityService
                 ->table('course_test')
                 ->select('id', 'course_url', 'series', 'variant', 'file_path')
                 ->whereRaw("TRIM(COALESCE(file_path, '')) <> ''")
+                ->where('id', '>', $startAfterId)
                 ->orderBy('id')
                 ->limit($realCheckLimit)
                 ->get();
 
             $testContentCheckedRowsCount = $testRowsToCheck->count();
+            $testContentCheckedMinId = $testRowsToCheck->min('id');
+            $testContentCheckedMaxId = $testRowsToCheck->max('id');
             $urlStatusCache = [];
 
             foreach ($testRowsToCheck as $row) {
@@ -262,6 +273,12 @@ class CourseIntegrityService
             ->orderBy('c.url')
             ->get();
 
+        $nextStartAfterId = max(
+            $startAfterId,
+            (int) ($mediaCheckedMaxId ?? 0),
+            (int) ($testContentCheckedMaxId ?? 0)
+        );
+
         return [
             'videoRowsCount' => (clone $videoBase)->count(),
             'audioRowsCount' => (clone $audioBase)->count(),
@@ -271,17 +288,23 @@ class CourseIntegrityService
             'audioInvalidPathCount' => (int) $audioInvalidPathCount,
             'realCheckEnabled' => $realCheckEnabled,
             'realCheckLimit' => $realCheckLimit,
+            'startAfterId' => $startAfterId,
             'mediaCheckedRowsCount' => (int) $mediaCheckedRowsCount,
+            'mediaCheckedMinId' => $mediaCheckedMinId,
+            'mediaCheckedMaxId' => $mediaCheckedMaxId,
             'mediaMissingOnServerCount' => (int) $mediaMissingOnServer->count(),
             'mediaPathProblems' => $mediaPathProblems,
             'mediaPathProblemsCount' => $mediaPathProblems->count(),
             'testContentRowsCount' => (int) $testContentRowsCount,
             'testContentMissingPathCount' => (int) $testContentMissingPathCount,
             'testContentCheckedRowsCount' => (int) $testContentCheckedRowsCount,
+            'testContentCheckedMinId' => $testContentCheckedMinId,
+            'testContentCheckedMaxId' => $testContentCheckedMaxId,
             'testContentUnknownExtensionCount' => (int) $testContentUnknownExtensionCount,
             'testContentMissingOnServerCount' => (int) $testContentMissingOnServerCount,
             'testContentProblems' => $testContentProblems,
             'testContentProblemsCount' => (int) $testContentProblems->count(),
+            'nextStartAfterId' => $nextStartAfterId,
             'lessonsWithoutCategory' => $lessonsWithoutCategory,
             'lessonsWithoutCategoryCount' => $lessonsWithoutCategory->count(),
             'carouselWithoutLesson' => $carouselWithoutLesson,

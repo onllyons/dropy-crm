@@ -11,7 +11,7 @@ class FlashCardsService
     private const FLASHCARDS_AUDIO_BASE = 'https://www.language.onllyons.com/ru/ru-en/packs/assest/game-card-word/content/audio_file/en-to-ru';
     private const FLASHCARDS_PHRASES_AUDIO_BASE = 'https://www.language.onllyons.com/ru/ru-en/packs/assest/flashcard-questions-and-sentences/audio/audio-en-ru';
 
-    public function getDebutIntegrityReport(bool $realCheckEnabled = true, int $realCheckLimit = 500): array
+    public function getDebutIntegrityReport(bool $realCheckEnabled = true, int $realCheckLimit = 500, int $startAfterId = 0): array
     {
         $base = DB::connection('tenant')
             ->table('cardsLearnWordsContent');
@@ -24,19 +24,29 @@ class FlashCardsService
             })
             ->count();
 
-        $realCheckLimit = max(10, min($realCheckLimit, 5000));
+        $realCheckLimit = max(10, min($realCheckLimit, 50000));
+        $startAfterId = max(0, $startAfterId);
         $checkedRowsCount = 0;
+        $checkedMinId = null;
+        $checkedMaxId = null;
+        $nextStartAfterId = $startAfterId;
         $missingOnServerRows = collect();
 
         if ($realCheckEnabled) {
             $rowsToCheck = (clone $base)
                 ->select('id', 'url_display', 'word_en', 'word_ru', 'word_audio_mp3')
                 ->whereRaw("TRIM(COALESCE(word_audio_mp3, '')) <> ''")
+                ->where('id', '>', $startAfterId)
                 ->orderBy('id')
                 ->limit($realCheckLimit)
                 ->get();
 
             $checkedRowsCount = $rowsToCheck->count();
+            $checkedMinId = $rowsToCheck->min('id');
+            $checkedMaxId = $rowsToCheck->max('id');
+            if ($checkedMaxId !== null) {
+                $nextStartAfterId = (int) $checkedMaxId;
+            }
             $urlStatusCache = [];
 
             foreach ($rowsToCheck as $row) {
@@ -62,13 +72,17 @@ class FlashCardsService
             'missingPathCount' => $missingPathCount,
             'realCheckEnabled' => $realCheckEnabled,
             'realCheckLimit' => $realCheckLimit,
+            'startAfterId' => $startAfterId,
             'checkedRowsCount' => (int) $checkedRowsCount,
+            'checkedMinId' => $checkedMinId,
+            'checkedMaxId' => $checkedMaxId,
+            'nextStartAfterId' => $nextStartAfterId,
             'missingOnServerCount' => (int) $missingOnServerRows->count(),
             'missingOnServerRows' => $missingOnServerRows,
         ];
     }
 
-    public function getPhrasesDebutIntegrityReport(bool $realCheckEnabled = true, int $realCheckLimit = 500): array
+    public function getPhrasesDebutIntegrityReport(bool $realCheckEnabled = true, int $realCheckLimit = 500, int $startAfterId = 0): array
     {
         $base = DB::connection('tenant')
             ->table('flashcards_question_sentences_content');
@@ -81,19 +95,29 @@ class FlashCardsService
             })
             ->count();
 
-        $realCheckLimit = max(10, min($realCheckLimit, 5000));
+        $realCheckLimit = max(10, min($realCheckLimit, 50000));
+        $startAfterId = max(0, $startAfterId);
         $checkedRowsCount = 0;
+        $checkedMinId = null;
+        $checkedMaxId = null;
+        $nextStartAfterId = $startAfterId;
         $missingOnServerRows = collect();
 
         if ($realCheckEnabled) {
             $rowsToCheck = (clone $base)
                 ->select('id', 'url_display', 'word_en', 'word_ru', 'word_audio')
                 ->whereRaw("TRIM(COALESCE(word_audio, '')) <> ''")
+                ->where('id', '>', $startAfterId)
                 ->orderBy('id')
                 ->limit($realCheckLimit)
                 ->get();
 
             $checkedRowsCount = $rowsToCheck->count();
+            $checkedMinId = $rowsToCheck->min('id');
+            $checkedMaxId = $rowsToCheck->max('id');
+            if ($checkedMaxId !== null) {
+                $nextStartAfterId = (int) $checkedMaxId;
+            }
             $urlStatusCache = [];
 
             foreach ($rowsToCheck as $row) {
@@ -119,7 +143,11 @@ class FlashCardsService
             'missingPathCount' => $missingPathCount,
             'realCheckEnabled' => $realCheckEnabled,
             'realCheckLimit' => $realCheckLimit,
+            'startAfterId' => $startAfterId,
             'checkedRowsCount' => (int) $checkedRowsCount,
+            'checkedMinId' => $checkedMinId,
+            'checkedMaxId' => $checkedMaxId,
+            'nextStartAfterId' => $nextStartAfterId,
             'missingOnServerCount' => (int) $missingOnServerRows->count(),
             'missingOnServerRows' => $missingOnServerRows,
         ];

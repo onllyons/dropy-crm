@@ -14,13 +14,19 @@ class FlashCardsController extends Controller
         $error = null;
         $realCheckEnabled = $request->boolean('real_check', true);
         $realCheckLimit = (int) $request->query('real_check_limit', 500);
-        $realCheckLimit = max(10, min($realCheckLimit, 5000));
+        $realCheckLimit = max(10, min($realCheckLimit, 50000));
+        $startAfterId = (int) $request->query('start_after_id', 0);
+        $startAfterId = max(0, $startAfterId);
         $wordsReport = [
             'totalRows' => 0,
             'missingPathCount' => 0,
             'realCheckEnabled' => $realCheckEnabled,
             'realCheckLimit' => $realCheckLimit,
+            'startAfterId' => $startAfterId,
             'checkedRowsCount' => 0,
+            'checkedMinId' => null,
+            'checkedMaxId' => null,
+            'nextStartAfterId' => $startAfterId,
             'missingOnServerCount' => 0,
             'missingOnServerRows' => collect(),
         ];
@@ -29,20 +35,24 @@ class FlashCardsController extends Controller
             'missingPathCount' => 0,
             'realCheckEnabled' => $realCheckEnabled,
             'realCheckLimit' => $realCheckLimit,
+            'startAfterId' => $startAfterId,
             'checkedRowsCount' => 0,
+            'checkedMinId' => null,
+            'checkedMaxId' => null,
+            'nextStartAfterId' => $startAfterId,
             'missingOnServerCount' => 0,
             'missingOnServerRows' => collect(),
         ];
         $errors = [];
 
         try {
-            $wordsReport = $service->getDebutIntegrityReport($realCheckEnabled, $realCheckLimit);
+            $wordsReport = $service->getDebutIntegrityReport($realCheckEnabled, $realCheckLimit, $startAfterId);
         } catch (\Throwable $e) {
             $errors[] = 'Words audio: ' . $e->getMessage();
         }
 
         try {
-            $phrasesReport = $service->getPhrasesDebutIntegrityReport($realCheckEnabled, $realCheckLimit);
+            $phrasesReport = $service->getPhrasesDebutIntegrityReport($realCheckEnabled, $realCheckLimit, $startAfterId);
         } catch (\Throwable $e) {
             $errors[] = 'Phrases audio: ' . $e->getMessage();
         }

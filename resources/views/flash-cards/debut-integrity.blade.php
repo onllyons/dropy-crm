@@ -51,7 +51,11 @@
                             </label>
                             <label class="text-xs font-semibold text-slate-700">
                                 Rows limit
-                                <input type="number" min="10" max="5000" name="real_check_limit" value="{{ (int) ($wordsReport['realCheckLimit'] ?? 500) }}" class="ml-2 w-24 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-normal text-slate-700" />
+                                <input type="number" min="10" max="50000" name="real_check_limit" value="{{ (int) ($wordsReport['realCheckLimit'] ?? 500) }}" class="ml-2 w-24 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-normal text-slate-700" />
+                            </label>
+                            <label class="text-xs font-semibold text-slate-700">
+                                Start after ID
+                                <input type="number" min="0" step="1" name="start_after_id" value="{{ (int) ($wordsReport['startAfterId'] ?? 0) }}" class="ml-2 w-28 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-normal text-slate-700" />
                             </label>
                             <button type="submit" class="rounded-lg border border-indigo-200 bg-indigo-100 px-3 py-1.5 text-xs font-semibold text-indigo-900 hover:bg-indigo-200">
                                 Run check
@@ -70,12 +74,28 @@
                             <div class="rounded-xl border border-indigo-200 bg-white p-3">
                                 <div class="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Checked rows (HTTP)</div>
                                 <div class="mt-1 text-xl font-semibold text-indigo-900">{{ number_format((int) ($wordsReport['checkedRowsCount'] ?? 0)) }}</div>
+                                <div class="mt-1 text-[11px] text-indigo-700">
+                                    IDs: {{ $wordsReport['checkedMinId'] ?? '-' }} - {{ $wordsReport['checkedMaxId'] ?? '-' }}
+                                </div>
                             </div>
                             <div class="rounded-xl border border-red-200 bg-red-50 p-3">
                                 <div class="text-[11px] font-semibold uppercase tracking-wide text-red-500">Missing on server</div>
                                 <div class="mt-1 text-xl font-semibold text-red-700">{{ number_format((int) ($wordsReport['missingOnServerCount'] ?? 0)) }}</div>
                             </div>
                         </div>
+                    </div>
+
+                    @php
+                        $nextWordsStart = (int) ($wordsReport['nextStartAfterId'] ?? 0);
+                        $nextPhrasesStart = (int) ($phrasesReport['nextStartAfterId'] ?? 0);
+                        $nextBatchStart = max($nextWordsStart, $nextPhrasesStart);
+                    @endphp
+                    <div class="mt-3">
+                        <a href="{{ route('flash-cards.debut-integrity', ['real_check' => !empty($wordsReport['realCheckEnabled']) ? 1 : 0, 'real_check_limit' => (int) ($wordsReport['realCheckLimit'] ?? 500), 'start_after_id' => $nextBatchStart]) }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                            <i class="fa-solid fa-forward-step"></i>
+                            Next batch
+                        </a>
+                        <span class="ml-2 text-xs text-slate-500">next start_after_id: {{ $nextBatchStart }}</span>
                     </div>
 
                     <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -144,6 +164,9 @@
                             <div class="rounded-xl border border-emerald-200 bg-white p-3">
                                 <div class="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Checked rows (HTTP)</div>
                                 <div class="mt-1 text-xl font-semibold text-emerald-900">{{ number_format((int) ($phrasesReport['checkedRowsCount'] ?? 0)) }}</div>
+                                <div class="mt-1 text-[11px] text-emerald-700">
+                                    IDs: {{ $phrasesReport['checkedMinId'] ?? '-' }} - {{ $phrasesReport['checkedMaxId'] ?? '-' }}
+                                </div>
                             </div>
                             <div class="rounded-xl border border-red-200 bg-red-50 p-3">
                                 <div class="text-[11px] font-semibold uppercase tracking-wide text-red-500">Missing on server</div>

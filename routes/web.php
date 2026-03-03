@@ -1820,6 +1820,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/flash-cards', [FlashCardsController::class, 'index'])
         ->name('flash-cards.index');
+    Route::get('/flash-cards/flash-card-words', [FlashCardsController::class, 'wordsList'])
+        ->name('flash-cards.words-list');
     Route::get('/flash-cards/debut-integrity', [FlashCardsController::class, 'debutIntegrity'])
         ->name('flash-cards.debut-integrity');
     Route::get('/flash-cards/words-lessons/{lessonId}', [FlashCardsController::class, 'showWordsLesson'])
@@ -1828,6 +1830,24 @@ Route::middleware('auth')->group(function () {
     Route::get('/flash-cards/phrases-lessons/{lessonId}', [FlashCardsController::class, 'showPhrasesLesson'])
         ->where('lessonId', '[0-9]+')
         ->name('flash-cards.phrases-lessons.show');
+    Route::get('/flash-cards-v2', [FlashCardsController::class, 'v2'])
+        ->name('flash-cards.v2');
+    Route::get('/flash-cards-v2/modules/{moduleId}', [FlashCardsController::class, 'showV2Module'])
+        ->where('moduleId', '[0-9]+')
+        ->name('flash-cards.v2.module');
+    Route::get('/flash-cards-v2/modules/{moduleId}/plain', [FlashCardsController::class, 'showV2ModulePlain'])
+        ->where('moduleId', '[0-9]+')
+        ->name('flash-cards.v2.module.plain');
+    Route::get('/flash-cards-v2/lessons/{lessonId}', [FlashCardsController::class, 'showV2Lesson'])
+        ->where('lessonId', '[0-9]+')
+        ->name('flash-cards.v2.lesson');
+    Route::post('/flash-cards-v2/items/{itemId}/inline-update', [FlashCardsController::class, 'updateV2ItemInline'])
+        ->where('itemId', '[0-9]+')
+        ->name('flash-cards.v2.item.inline-update');
+    Route::post('/flash-cards-v2/duplicates/gpt-preview', [FlashCardsController::class, 'v2DuplicateGptPreview'])
+        ->name('flash-cards.v2.duplicates.gpt-preview');
+    Route::post('/flash-cards-v2/duplicates/gpt-ask', [FlashCardsController::class, 'v2DuplicateGptAsk'])
+        ->name('flash-cards.v2.duplicates.gpt-ask');
 
     Route::post('/tenant/switch', function (Request $request) {
         $allowed = array_keys(config('dropy.tenants.allowed', []));

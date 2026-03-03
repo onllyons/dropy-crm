@@ -3,12 +3,296 @@
 namespace App\Http\Controllers;
 
 use App\Services\FlashCardsService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class FlashCardsController extends Controller
 {
+    public function v2(FlashCardsService $service): View
+    {
+        $error = null;
+        $modules = collect();
+        $globalReusedGroups = collect();
+        $summary = [
+            'modules' => 0,
+            'lessons' => 0,
+            'active_modules' => 0,
+            'active_lessons' => 0,
+            'items' => 0,
+            'reused_groups_global' => 0,
+            'reused_rows_global' => 0,
+        ];
+
+        try {
+            $data = $service->getV2Data();
+            $modules = $data['modules'] ?? collect();
+            $summary = $data['summary'] ?? $summary;
+            $globalReusedGroups = $data['globalReusedGroups'] ?? collect();
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('flash-cards.v2', [
+            'modules' => $modules,
+            'globalReusedGroups' => $globalReusedGroups,
+            'summary' => $summary,
+            'error' => $error,
+        ]);
+    }
+
+    public function showV2Lesson(int $lessonId, FlashCardsService $service): View
+    {
+        $error = null;
+        $detail = [
+            'lesson' => null,
+            'items' => collect(),
+            'itemsByType' => collect(),
+            'summary' => [
+                'items' => 0,
+                'with_audio' => 0,
+            ],
+        ];
+
+        try {
+            $detail = $service->getV2LessonDetails($lessonId);
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        if (!$detail['lesson'] && $error === null) {
+            abort(404);
+        }
+
+        return view('flash-cards.v2-lesson', [
+            'detail' => $detail,
+            'error' => $error,
+        ]);
+    }
+
+    public function updateV2ItemInline(Request $request, int $itemId, FlashCardsService $service): JsonResponse
+    {
+        $payload = $request->validate([
+            'field' => ['required', 'string', Rule::in(['text_from', 'text_to', 'ipa'])],
+            'value' => ['nullable', 'string'],
+        ]);
+
+        try {
+            $result = $service->updateV2ItemTextField(
+                $itemId,
+                (string) $payload['field'],
+                trim((string) ($payload['value'] ?? ''))
+            );
+
+            if (!$result) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Item not found.',
+                ], 404);
+            }
+
+            return response()->json([
+                'ok' => true,
+                'message' => 'Saved.',
+                'item' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function v2DuplicateGptPreview(Request $request, FlashCardsService $service): JsonResponse
+    {
+        $payload = $request->validate([
+            'type_norm' => ['required', 'string', 'max:100'],
+            'text_from' => ['nullable', 'string', 'max:1000'],
+            'text_to' => ['nullable', 'string', 'max:1000'],
+            'lesson_ids' => ['required', 'array', 'min:2', 'max:10'],
+            'lesson_ids.*' => ['required', 'integer', 'min:1'],
+        ]);
+
+        try {
+            $preview = $service->buildV2DuplicateGptPreview(
+                (array) $payload['lesson_ids'],
+                (string) $payload['type_norm'],
+                trim((string) ($payload['text_from'] ?? '')),
+                trim((string) ($payload['text_to'] ?? ''))
+            );
+
+            return response()->json([
+                'ok' => true,
+                'preview' => $preview,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function v2DuplicateGptAsk(Request $request, FlashCardsService $service): JsonResponse
+    {
+        $payload = $request->validate([
+            'type_norm' => ['required', 'string', 'max:100'],
+            'text_from' => ['nullable', 'string', 'max:1000'],
+            'text_to' => ['nullable', 'string', 'max:1000'],
+            'lesson_ids' => ['required', 'array', 'min:2', 'max:10'],
+            'lesson_ids.*' => ['required', 'integer', 'min:1'],
+        ]);
+
+        try {
+            $preview = $service->buildV2DuplicateGptPreview(
+                (array) $payload['lesson_ids'],
+                (string) $payload['type_norm'],
+                trim((string) ($payload['text_from'] ?? '')),
+                trim((string) ($payload['text_to'] ?? ''))
+            );
+
+            $result = $service->askV2DuplicateGptUpdateSql($preview);
+
+            return response()->json([
+                'ok' => true,
+                'preview' => $preview,
+                'result' => $result,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function showV2Module(int $moduleId, FlashCardsService $service): View
+    {
+        $error = null;
+        $detail = [
+            'module' => null,
+            'lessons' => collect(),
+            'duplicateGroups' => collect(),
+            'reusedGroups' => collect(),
+            'summary' => [
+                'lessons' => 0,
+                'active_lessons' => 0,
+                'items' => 0,
+                'items_with_audio' => 0,
+                'duplicate_rows' => 0,
+                'duplicate_groups' => 0,
+                'reused_groups' => 0,
+            ],
+        ];
+
+        try {
+            $detail = $service->getV2ModuleDetails($moduleId);
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        if (!$detail['module'] && $error === null) {
+            abort(404);
+        }
+
+        return view('flash-cards.v2-module', [
+            'detail' => $detail,
+            'error' => $error,
+        ]);
+    }
+
+    public function showV2ModulePlain(int $moduleId, FlashCardsService $service): View
+    {
+        $error = null;
+        $detail = [
+            'module' => null,
+            'lessons' => collect(),
+            'duplicateGroups' => collect(),
+            'reusedGroups' => collect(),
+            'summary' => [
+                'lessons' => 0,
+                'active_lessons' => 0,
+                'items' => 0,
+                'items_with_audio' => 0,
+                'duplicate_rows' => 0,
+                'duplicate_groups' => 0,
+                'reused_groups' => 0,
+            ],
+        ];
+
+        try {
+            $detail = $service->getV2ModuleDetails($moduleId);
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        if (!$detail['module'] && $error === null) {
+            abort(404);
+        }
+
+        return view('flash-cards.v2-module-plain', [
+            'detail' => $detail,
+            'error' => $error,
+        ]);
+    }
+
+    public function wordsList(FlashCardsService $service): View
+    {
+        $error = null;
+        $lessons = collect();
+        $outline = collect();
+        $stats = [
+            'categories' => 0,
+            'lessons' => 0,
+            'words' => 0,
+        ];
+
+        try {
+            $lessons = $service->getWordsManualList();
+            $outline = $lessons
+                ->groupBy('group_category')
+                ->map(function ($rows, $groupCode) {
+                    $first = $rows->first();
+                    $groupTitle = trim((string) ($first->group_title ?? ''));
+                    $groupId = is_numeric($first->group_category_id ?? null) ? (int) $first->group_category_id : null;
+                    if ($groupTitle === '') {
+                        $groupTitle = trim((string) $groupCode) !== '' ? (string) $groupCode : 'Uncategorized';
+                    }
+
+                    return (object) [
+                        'group_id' => $groupId,
+                        'group_code' => $groupCode,
+                        'group_title' => $groupTitle,
+                        'lessons' => $rows->pluck('title')->filter(function ($title) {
+                            return trim((string) $title) !== '';
+                        })->values(),
+                    ];
+                })
+                ->sortBy(function ($group) {
+                    return $group->group_id === null ? PHP_INT_MAX : (int) $group->group_id;
+                })
+                ->values();
+
+            $stats['categories'] = $outline->count();
+            $stats['lessons'] = $lessons->count();
+            $stats['words'] = (int) $lessons->sum(function ($lesson) {
+                return (int) ($lesson->words_count ?? 0);
+            });
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('flash-cards.words-list', [
+            'lessons' => $lessons,
+            'outline' => $outline,
+            'stats' => $stats,
+            'error' => $error,
+        ]);
+    }
+
     public function debutIntegrity(Request $request, FlashCardsService $service): View
     {
         $error = null;

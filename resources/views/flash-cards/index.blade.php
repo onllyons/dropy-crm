@@ -17,10 +17,14 @@
                     <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                         <h1 class="text-2xl font-semibold">Flash Cards Analytics</h1>
                         <p class="mt-2 text-sm text-slate-600">Words + Phrases progress, cu filtre globale, paginare și drill-down pe lecții.</p>
-                        <div class="mt-3">
+                        <div class="mt-3 flex flex-wrap gap-2">
                             <a href="{{ route('flash-cards.debut-integrity') }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                                 <i class="fa-solid fa-shield-halved"></i>
                                 debut integrity
+                            </a>
+                            <a href="{{ route('flash-cards.words-list') }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                <i class="fa-solid fa-list-ul"></i>
+                                flash-card-words
                             </a>
                         </div>
                     </div>

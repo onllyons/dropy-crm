@@ -3,13 +3,760 @@
 namespace App\Services;
 
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class FlashCardsService
 {
     private const PROD_BASE_URL = 'https://www.language.onllyons.com';
     private const FLASHCARDS_AUDIO_BASE = 'https://www.language.onllyons.com/ru/ru-en/packs/assest/game-card-word/content/audio_file/en-to-ru';
     private const FLASHCARDS_PHRASES_AUDIO_BASE = 'https://www.language.onllyons.com/ru/ru-en/packs/assest/flashcard-questions-and-sentences/audio/audio-en-ru';
+
+    public function getModules(): Collection
+    {
+        return DB::connection('tenant')
+            ->table('flashcard_modules')
+            ->select('id', 'title', 'slug', 'description', 'sort_order', 'is_active', 'created_at', 'updated_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    public function getV2Data(): array
+    {
+        $modules = DB::connection('tenant')
+            ->table('flashcard_modules')
+            ->select('id', 'title', 'slug', 'description', 'sort_order', 'is_active', 'created_at', 'updated_at')
+            ->orderByRaw('CASE WHEN sort_order IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->keyBy(function ($row) {
+                return (int) ($row->id ?? 0);
+            });
+
+        $lessonsGrouped = DB::connection('tenant')
+            ->table('flashcard_lessons')
+            ->select('id', 'module_id', 'title', 'url', 'lesson_type', 'level', 'sort_order', 'is_active', 'created_at', 'updated_at')
+            ->orderByRaw('CASE WHEN sort_order IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->groupBy(function ($row) {
+                return (int) ($row->module_id ?? 0);
+            });
+
+        $itemsCountByModule = DB::connection('tenant')
+            ->table('flashcard_items as i')
+            ->join('flashcard_lessons as l', 'l.id', '=', 'i.lesson_id')
+            ->select('l.module_id', DB::raw('COUNT(i.id) as items_count'))
+            ->groupBy('l.module_id')
+            ->pluck('items_count', 'l.module_id');
+
+        $moduleCards = $modules->map(function ($module, $moduleId) use ($lessonsGrouped, $itemsCountByModule) {
+            $lessonRows = $lessonsGrouped->get((int) $moduleId, collect())
+                ->map(function ($lesson) {
+                    $lesson->is_active = (int) ($lesson->is_active ?? 0);
+                    return $lesson;
+                })
+                ->values();
+
+            $module->is_active = (int) ($module->is_active ?? 0);
+            $module->lessons = $lessonRows;
+            $module->lessons_count = $lessonRows->count();
+            $module->active_lessons_count = (int) $lessonRows->where('is_active', 1)->count();
+            $module->items_count = (int) ($itemsCountByModule->get((int) $moduleId, 0));
+
+            return $module;
+        })->values();
+
+        $summary = [
+            'modules' => $moduleCards->count(),
+            'lessons' => (int) $moduleCards->sum('lessons_count'),
+            'active_modules' => (int) $moduleCards->where('is_active', 1)->count(),
+            'active_lessons' => (int) $moduleCards->sum('active_lessons_count'),
+            'items' => (int) $moduleCards->sum('items_count'),
+            'reused_groups_global' => 0,
+            'reused_rows_global' => 0,
+        ];
+
+        $globalTypeExpr = "CASE LOWER(TRIM(COALESCE(i.type, ''))) WHEN 'questions' THEN 'question' WHEN 'question' THEN 'question' WHEN 'phrases' THEN 'phrase' WHEN 'phrase' THEN 'phrase' WHEN 'words' THEN 'word' WHEN 'word' THEN 'word' ELSE LOWER(TRIM(COALESCE(i.type, ''))) END";
+        $globalFromExpr = "TRIM(COALESCE(i.text_from, ''))";
+        $globalToExpr = "TRIM(COALESCE(i.text_to, ''))";
+
+        $globalReusedGroups = DB::connection('tenant')
+            ->table('flashcard_items as i')
+            ->join('flashcard_lessons as l', 'l.id', '=', 'i.lesson_id')
+            ->selectRaw($globalTypeExpr . ' as type')
+            ->selectRaw($globalFromExpr . ' as text_from')
+            ->selectRaw($globalToExpr . ' as text_to')
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw('COUNT(DISTINCT i.lesson_id) as lesson_count')
+            ->selectRaw('COUNT(DISTINCT l.module_id) as module_count')
+            ->selectRaw("GROUP_CONCAT(DISTINCT i.lesson_id ORDER BY i.lesson_id ASC SEPARATOR ', ') as lesson_ids")
+            ->selectRaw("GROUP_CONCAT(DISTINCT l.module_id ORDER BY l.module_id ASC SEPARATOR ', ') as module_ids")
+            ->selectRaw("GROUP_CONCAT(DISTINCT LOWER(TRIM(COALESCE(i.type, ''))) ORDER BY LOWER(TRIM(COALESCE(i.type, ''))) ASC SEPARATOR ', ') as raw_types")
+            ->where(function ($query) {
+                $query->whereRaw("TRIM(COALESCE(i.text_from, '')) <> ''")
+                    ->orWhereRaw("TRIM(COALESCE(i.text_to, '')) <> ''");
+            })
+            ->groupByRaw($globalTypeExpr . ', ' . $globalFromExpr . ', ' . $globalToExpr)
+            ->havingRaw('COUNT(DISTINCT i.lesson_id) > 1')
+            ->orderByDesc('total_count')
+            ->get();
+
+        $summary['reused_groups_global'] = (int) $globalReusedGroups->count();
+        $summary['reused_rows_global'] = (int) $globalReusedGroups->sum(function ($row) {
+            return max(((int) ($row->total_count ?? 0)) - 1, 0);
+        });
+
+        return [
+            'modules' => $moduleCards,
+            'summary' => $summary,
+            'globalReusedGroups' => $globalReusedGroups,
+        ];
+    }
+
+    public function getV2LessonDetails(int $lessonId): array
+    {
+        $lesson = DB::connection('tenant')
+            ->table('flashcard_lessons as l')
+            ->leftJoin('flashcard_modules as m', 'm.id', '=', 'l.module_id')
+            ->select(
+                'l.id',
+                'l.module_id',
+                'l.title',
+                'l.url',
+                'l.lesson_type',
+                'l.level',
+                'l.sort_order',
+                'l.is_active',
+                'l.created_at',
+                'l.updated_at',
+                'm.title as module_title',
+                'm.slug as module_slug',
+                'm.is_active as module_is_active'
+            )
+            ->where('l.id', $lessonId)
+            ->first();
+
+        if (!$lesson) {
+            return [
+                'lesson' => null,
+                'items' => collect(),
+                'itemsByType' => collect(),
+                'summary' => [
+                    'items' => 0,
+                    'with_audio' => 0,
+                ],
+            ];
+        }
+
+        $items = DB::connection('tenant')
+            ->table('flashcard_items')
+            ->select('id', 'lesson_id', 'type', 'text_from', 'text_to', 'ipa', 'audio', 'created_at', 'updated_at')
+            ->where('lesson_id', $lessonId)
+            ->orderBy('id')
+            ->get();
+
+        $lesson->is_active = (int) ($lesson->is_active ?? 0);
+        $lesson->module_is_active = (int) ($lesson->module_is_active ?? 0);
+
+        return [
+            'lesson' => $lesson,
+            'items' => $items,
+            'itemsByType' => $items
+                ->groupBy(function ($row) {
+                    $type = $this->normalizeV2ItemType((string) ($row->type ?? ''));
+                    return $type !== '' ? $type : 'unknown';
+                })
+                ->map(function ($rows) {
+                    return $rows->count();
+                })
+                ->sortKeys(),
+            'summary' => [
+                'items' => $items->count(),
+                'with_audio' => (int) $items->filter(function ($row) {
+                    return trim((string) ($row->audio ?? '')) !== '';
+                })->count(),
+            ],
+        ];
+    }
+
+    public function updateV2ItemTextField(int $itemId, string $field, string $value): ?array
+    {
+        if (!in_array($field, ['text_from', 'text_to', 'ipa'], true)) {
+            return null;
+        }
+
+        $row = DB::connection('tenant')
+            ->table('flashcard_items')
+            ->select('id', 'lesson_id')
+            ->where('id', $itemId)
+            ->first();
+
+        if (!$row) {
+            return null;
+        }
+
+        DB::connection('tenant')
+            ->table('flashcard_items')
+            ->where('id', $itemId)
+            ->update([
+                $field => $value,
+                'updated_at' => now(),
+            ]);
+
+        return [
+            'id' => (int) ($row->id ?? 0),
+            'lesson_id' => (int) ($row->lesson_id ?? 0),
+            'field' => $field,
+            'value' => $value,
+        ];
+    }
+
+    public function buildV2DuplicateGptPreview(array $lessonIds, string $typeNorm, string $textFrom, string $textTo): array
+    {
+        $normalizedType = $this->normalizeV2ItemType($typeNorm);
+        $normalizedFrom = $this->normalizeV2DuplicateText($textFrom);
+        $normalizedTo = $this->normalizeV2DuplicateText($textTo);
+
+        $lessonIds = collect($lessonIds)
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->sort()
+            ->values();
+
+        if ($lessonIds->count() < 2) {
+            throw new \RuntimeException('At least 2 lessons are required.');
+        }
+
+        $lessons = DB::connection('tenant')
+            ->table('flashcard_lessons')
+            ->select('id', 'module_id', 'title', 'url', 'lesson_type', 'level')
+            ->whereIn('id', $lessonIds)
+            ->orderBy('id')
+            ->get()
+            ->keyBy('id');
+
+        $items = DB::connection('tenant')
+            ->table('flashcard_items')
+            ->select('id', 'lesson_id', 'type', 'text_from', 'text_to', 'ipa')
+            ->whereIn('lesson_id', $lessonIds)
+            ->orderBy('lesson_id')
+            ->orderBy('id')
+            ->get();
+
+        $duplicateItems = $items
+            ->filter(function ($item) use ($normalizedType, $normalizedFrom, $normalizedTo) {
+                return $this->normalizeV2ItemType((string) ($item->type ?? '')) === $normalizedType
+                    && $this->normalizeV2DuplicateText((string) ($item->text_from ?? '')) === $normalizedFrom
+                    && $this->normalizeV2DuplicateText((string) ($item->text_to ?? '')) === $normalizedTo;
+            })
+            ->map(function ($item) use ($lessons) {
+                $lesson = $lessons->get((int) ($item->lesson_id ?? 0));
+
+                return [
+                    'id' => (int) ($item->id ?? 0),
+                    'lesson_id' => (int) ($item->lesson_id ?? 0),
+                    'lesson_title' => trim((string) ($lesson->title ?? '')),
+                    'lesson_level' => strtoupper(trim((string) ($lesson->level ?? ''))),
+                    'type' => trim((string) ($item->type ?? '')),
+                    'text_from' => trim((string) ($item->text_from ?? '')),
+                    'text_to' => trim((string) ($item->text_to ?? '')),
+                    'ipa' => trim((string) ($item->ipa ?? '')),
+                ];
+            })
+            ->values();
+
+        $allowedItemIds = $duplicateItems
+            ->pluck('id')
+            ->filter(function ($id) {
+                return (int) $id > 0;
+            })
+            ->unique()
+            ->sort()
+            ->values();
+
+        if ($allowedItemIds->count() < 2) {
+            throw new \RuntimeException('Duplicate rows were not found for selected lessons.');
+        }
+
+        $itemsByLesson = $items->groupBy(function ($item) {
+            return (int) ($item->lesson_id ?? 0);
+        });
+
+        $lessonsPayload = $lessonIds
+            ->map(function ($lessonId) use ($lessons, $itemsByLesson) {
+                $lesson = $lessons->get((int) $lessonId);
+                $rows = $itemsByLesson->get((int) $lessonId, collect());
+
+                return [
+                    'id' => (int) $lessonId,
+                    'title' => trim((string) ($lesson->title ?? '')),
+                    'url' => trim((string) ($lesson->url ?? '')),
+                    'lesson_type' => trim((string) ($lesson->lesson_type ?? '')),
+                    'level' => strtoupper(trim((string) ($lesson->level ?? ''))),
+                    'module_id' => is_numeric($lesson->module_id ?? null) ? (int) $lesson->module_id : null,
+                    'items' => $rows->map(function ($item) {
+                        return [
+                            'id' => (int) ($item->id ?? 0),
+                            'text_from' => trim((string) ($item->text_from ?? '')),
+                            'text_to' => trim((string) ($item->text_to ?? '')),
+                            'ipa' => trim((string) ($item->ipa ?? '')),
+                            'type' => trim((string) ($item->type ?? '')),
+                        ];
+                    })->values()->all(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'target' => [
+                'type_norm' => $normalizedType,
+                'text_from' => $normalizedFrom,
+                'text_to' => $normalizedTo,
+            ],
+            'lesson_ids' => $lessonIds->all(),
+            'allowed_item_ids' => $allowedItemIds->all(),
+            'duplicate_items' => $duplicateItems->all(),
+            'lessons' => $lessonsPayload,
+        ];
+    }
+
+    public function askV2DuplicateGptUpdateSql(array $preview): array
+    {
+        $apiKey = (string) (config('services.openai.api_key') ?: env('OPENAI_API_KEY', ''));
+        if ($apiKey === '') {
+            throw new \RuntimeException('OPENAI_API_KEY is missing.');
+        }
+
+        $model = (string) (config('services.openai.model') ?: env('OPENAI_MODEL', 'gpt-4.1'));
+        $allowedItemIds = collect($preview['allowed_item_ids'] ?? [])
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values();
+
+        if ($allowedItemIds->count() < 2) {
+            throw new \RuntimeException('No safe item IDs available for GPT action.');
+        }
+
+        $systemPrompt = <<<PROMPT
+You are assisting with semantic deduplication in MySQL table flashcard_items.
+
+The same word appears in two different lessons.
+
+Your task:
+1) Decide in which lesson the word fits better contextually.
+2) In the other lesson, replace the duplicate with a new word that:
+   - fits the lesson theme precisely
+   - matches the lesson CEFR level strictly
+   - for A2: avoid very basic A1 vocabulary (e.g. old, big, small, good, bad)
+   - maintains similar lexical complexity to the other words in that lesson
+   - does NOT duplicate any existing item in that lesson
+   - keeps the same type (word/phrase/question)
+3) Do NOT invent IDs.
+4) Use only IDs from allowed_item_ids.
+5) Do NOT delete rows.
+6) Return ONLY JSON with:
+   - keep_item_id
+   - update_item_id
+   - updated_fields:
+        text_from
+        text_to
+        ipa
+   - sql (single UPDATE statement for update_item_id)
+   If the proposed replacement lowers the lexical difficulty compared to the lesson's existing words, reject it and choose a more appropriate alternative.
+PROMPT;
+
+        $userPayload = [
+            'target' => $preview['target'] ?? [],
+            'allowed_item_ids' => $allowedItemIds->all(),
+            'duplicate_items' => $preview['duplicate_items'] ?? [],
+            'lessons' => $preview['lessons'] ?? [],
+        ];
+
+        $userPayloadJson = json_encode($userPayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($userPayloadJson) || $userPayloadJson === '') {
+            throw new \RuntimeException('Invalid payload JSON.');
+        }
+
+        $responseSchema = [
+            'type' => 'object',
+            'additionalProperties' => false,
+            'required' => ['keep_item_id', 'update_item_id', 'updated_fields'],
+            'properties' => [
+                'keep_item_id' => ['type' => 'integer'],
+                'update_item_id' => ['type' => 'integer'],
+                'updated_fields' => [
+                    'type' => 'object',
+                    'additionalProperties' => false,
+                    'required' => ['text_from', 'text_to', 'ipa'],
+                    'properties' => [
+                        'text_from' => ['type' => 'string'],
+                        'text_to' => ['type' => 'string'],
+                        'ipa' => ['type' => 'string'],
+                    ],
+                ],
+                'sql' => ['type' => 'string'],
+            ],
+        ];
+
+        $rawText = '';
+        $errors = [];
+
+        $responsesResponse = Http::withToken($apiKey)
+            ->timeout(90)
+            ->post('https://api.openai.com/v1/responses', [
+                'model' => $model,
+                'input' => [
+                    ['role' => 'system', 'content' => $systemPrompt],
+                    ['role' => 'user', 'content' => $userPayloadJson],
+                ],
+                'text' => [
+                    'format' => [
+                        'type' => 'json_schema',
+                        'name' => 'flashcard_dedup_update',
+                        'strict' => true,
+                        'schema' => $responseSchema,
+                    ],
+                ],
+            ]);
+
+        if ($responsesResponse->successful()) {
+            $rawText = $this->extractOpenAiText($responsesResponse->json('output_text', ''));
+            if ($rawText === '') {
+                $rawText = $this->extractOpenAiText($responsesResponse->json('output', []));
+            }
+        } else {
+            $errors[] = 'responses: HTTP ' . $responsesResponse->status() . ' ' . $this->summarizeOpenAiErrorBody((string) $responsesResponse->body());
+        }
+
+        if ($rawText === '') {
+            $chatResponse = Http::withToken($apiKey)
+                ->timeout(90)
+                ->post('https://api.openai.com/v1/chat/completions', [
+                    'model' => $model,
+                    'temperature' => 0,
+                    'response_format' => [
+                        'type' => 'json_object',
+                    ],
+                    'messages' => [
+                        ['role' => 'system', 'content' => $systemPrompt],
+                        ['role' => 'user', 'content' => $userPayloadJson],
+                    ],
+                ]);
+
+            if ($chatResponse->successful()) {
+                $rawText = $this->extractOpenAiText($chatResponse->json('choices.0.message.content', ''));
+            } else {
+                $errors[] = 'chat.completions: HTTP ' . $chatResponse->status() . ' ' . $this->summarizeOpenAiErrorBody((string) $chatResponse->body());
+            }
+        }
+
+        if ($rawText === '') {
+            $suffix = $errors !== [] ? ' | ' . implode(' | ', $errors) : '';
+            throw new \RuntimeException('OpenAI response is empty.' . $suffix);
+        }
+
+        $decoded = $this->decodeJsonObjectFromText($rawText);
+        $keepItemId = (int) ($decoded['keep_item_id'] ?? 0);
+        $updateItemId = (int) ($decoded['update_item_id'] ?? 0);
+
+        if (!$allowedItemIds->contains($keepItemId) || !$allowedItemIds->contains($updateItemId) || $keepItemId === $updateItemId) {
+            throw new \RuntimeException('OpenAI returned unsafe item IDs.');
+        }
+
+        $duplicateMap = collect($preview['duplicate_items'] ?? [])
+            ->keyBy(function ($row) {
+                return (int) ($row['id'] ?? 0);
+            });
+        $updateRow = $duplicateMap->get($updateItemId);
+        if (!$updateRow) {
+            throw new \RuntimeException('Unable to map update item to lesson.');
+        }
+
+        $updatedFields = is_array($decoded['updated_fields'] ?? null) ? $decoded['updated_fields'] : [];
+        $nextTextFrom = array_key_exists('text_from', $updatedFields)
+            ? trim((string) ($updatedFields['text_from'] ?? ''))
+            : trim((string) ($updateRow['text_from'] ?? ''));
+        $nextTextTo = array_key_exists('text_to', $updatedFields)
+            ? trim((string) ($updatedFields['text_to'] ?? ''))
+            : trim((string) ($updateRow['text_to'] ?? ''));
+        $nextIpa = array_key_exists('ipa', $updatedFields)
+            ? trim((string) ($updatedFields['ipa'] ?? ''))
+            : trim((string) ($updateRow['ipa'] ?? ''));
+
+        if ($nextTextFrom === '' && $nextTextTo === '') {
+            throw new \RuntimeException('OpenAI returned empty text_from and text_to.');
+        }
+
+        $updateLessonId = (int) ($updateRow['lesson_id'] ?? 0);
+        $targetTypeNorm = $this->normalizeV2ItemType((string) ($preview['target']['type_norm'] ?? ($updateRow['type'] ?? '')));
+        $originalTextFrom = trim((string) ($updateRow['text_from'] ?? ''));
+        $originalTextTo = trim((string) ($updateRow['text_to'] ?? ''));
+        $originalNormFrom = $this->normalizeV2DuplicateText($originalTextFrom);
+        $originalNormTo = $this->normalizeV2DuplicateText($originalTextTo);
+        $nextNormFrom = $this->normalizeV2DuplicateText($nextTextFrom);
+        $nextNormTo = $this->normalizeV2DuplicateText($nextTextTo);
+
+        if ($nextNormFrom === $originalNormFrom && $nextNormTo === $originalNormTo) {
+            throw new \RuntimeException('OpenAI returned same text_from/text_to. No replacement was generated.');
+        }
+
+        $updateLesson = collect($preview['lessons'] ?? [])
+            ->first(function ($lesson) use ($updateLessonId) {
+                return (int) ($lesson['id'] ?? 0) === $updateLessonId;
+            });
+        if (is_array($updateLesson)) {
+            $duplicateInsideLesson = collect($updateLesson['items'] ?? [])
+                ->contains(function ($item) use ($updateItemId, $targetTypeNorm, $nextNormFrom, $nextNormTo) {
+                    return (int) ($item['id'] ?? 0) !== $updateItemId
+                        && $this->normalizeV2ItemType((string) ($item['type'] ?? '')) === $targetTypeNorm
+                        && $this->normalizeV2DuplicateText((string) ($item['text_from'] ?? '')) === $nextNormFrom
+                        && $this->normalizeV2DuplicateText((string) ($item['text_to'] ?? '')) === $nextNormTo;
+                });
+
+            if ($duplicateInsideLesson) {
+                throw new \RuntimeException('OpenAI proposed another duplicate already existing in target lesson.');
+            }
+        }
+
+        $sql = sprintf(
+            "UPDATE `flashcard_items` SET `text_from` = %s, `text_to` = %s, `ipa` = %s, `updated_at` = NOW() WHERE `id` = %d AND `lesson_id` = %d LIMIT 1;",
+            $this->sqlQuoteString($nextTextFrom),
+            $this->sqlQuoteString($nextTextTo),
+            $this->sqlQuoteString($nextIpa),
+            $updateItemId,
+            $updateLessonId
+        );
+
+        return [
+            'model' => $model,
+            'keep_item_id' => $keepItemId,
+            'update_item_id' => $updateItemId,
+            'update_lesson_id' => $updateLessonId,
+            'updated_fields' => [
+                'text_from' => $nextTextFrom,
+                'text_to' => $nextTextTo,
+                'ipa' => $nextIpa,
+            ],
+            'sql' => $sql,
+            'raw_model_response' => $decoded,
+        ];
+    }
+
+    private function summarizeOpenAiErrorBody(string $body): string
+    {
+        $trimmed = trim($body);
+        if ($trimmed === '') {
+            return '';
+        }
+
+        $decoded = json_decode($trimmed, true);
+        if (is_array($decoded)) {
+            $message = trim((string) ($decoded['error']['message'] ?? $decoded['message'] ?? ''));
+            if ($message !== '') {
+                return preg_replace('/\s+/u', ' ', $message) ?? $message;
+            }
+        }
+
+        $compact = preg_replace('/\s+/u', ' ', $trimmed);
+        return substr((string) ($compact ?? $trimmed), 0, 220);
+    }
+
+    public function getV2ModuleDetails(int $moduleId): array
+    {
+        $module = DB::connection('tenant')
+            ->table('flashcard_modules')
+            ->select('id', 'title', 'slug', 'description', 'sort_order', 'is_active', 'created_at', 'updated_at')
+            ->where('id', $moduleId)
+            ->first();
+
+        if (!$module) {
+            return [
+                'module' => null,
+                'lessons' => collect(),
+                'duplicateGroups' => collect(),
+                'reusedGroups' => collect(),
+                'summary' => [
+                    'lessons' => 0,
+                    'active_lessons' => 0,
+                    'items' => 0,
+                    'items_with_audio' => 0,
+                    'duplicate_rows' => 0,
+                    'duplicate_groups' => 0,
+                    'reused_groups' => 0,
+                ],
+            ];
+        }
+
+        $lessons = DB::connection('tenant')
+            ->table('flashcard_lessons')
+            ->select('id', 'module_id', 'title', 'url', 'lesson_type', 'level', 'sort_order', 'is_active', 'created_at', 'updated_at')
+            ->where('module_id', $moduleId)
+            ->orderByRaw('CASE WHEN sort_order IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $lessonIds = $lessons->pluck('id')->filter()->values();
+        $itemsByLesson = collect();
+        if ($lessonIds->isNotEmpty()) {
+            $itemsByLesson = DB::connection('tenant')
+                ->table('flashcard_items')
+                ->select('id', 'lesson_id', 'type', 'text_from', 'text_to', 'ipa', 'audio', 'created_at', 'updated_at')
+                ->whereIn('lesson_id', $lessonIds)
+                ->orderBy('lesson_id')
+                ->orderBy('id')
+                ->get()
+                ->groupBy('lesson_id');
+        }
+
+        $lessons = $lessons->map(function ($lesson) use ($itemsByLesson) {
+            $items = $itemsByLesson->get((int) ($lesson->id ?? 0), collect())->values();
+            $lesson->is_active = (int) ($lesson->is_active ?? 0);
+            $lesson->items = $items;
+            $lesson->items_count = $items->count();
+            $lesson->items_with_audio = (int) $items->filter(function ($row) {
+                return trim((string) ($row->audio ?? '')) !== '';
+            })->count();
+            return $lesson;
+        });
+
+        $allItems = $lessons
+            ->flatMap(function ($lesson) {
+                return ($lesson->items ?? collect())->map(function ($item) {
+                    $typeRaw = strtolower(trim((string) ($item->type ?? '')));
+                    $type = $this->normalizeV2ItemType((string) ($item->type ?? ''));
+                    $from = $this->normalizeV2DuplicateText((string) ($item->text_from ?? ''));
+                    $to = $this->normalizeV2DuplicateText((string) ($item->text_to ?? ''));
+
+                    return (object) [
+                        'key' => $type . '||' . $from . '||' . $to,
+                        'type' => $type,
+                        'type_raw' => $typeRaw,
+                        'text_from' => $from,
+                        'text_to' => $to,
+                        'lesson_id' => (int) ($item->lesson_id ?? 0),
+                        'lesson_title' => trim((string) ($lesson->title ?? '')),
+                        'item_id' => (int) ($item->id ?? 0),
+                    ];
+                });
+            })
+            ->filter(function ($row) {
+                return $row->key !== '||||';
+            });
+
+        // Real duplicates: same lesson + same type + same text pair.
+        $duplicateGroups = $allItems
+            ->groupBy(function ($row) {
+                return $row->lesson_id . '||' . $row->key;
+            })
+            ->filter(function ($rows) {
+                return $rows->count() > 1;
+            })
+            ->map(function ($rows) {
+                $first = $rows->first();
+                return (object) [
+                    'lesson_id' => $first->lesson_id,
+                    'lesson_title' => $first->lesson_title,
+                    'type' => $first->type,
+                    'raw_types' => $rows->pluck('type_raw')->filter()->unique()->sort()->values(),
+                    'text_from' => $first->text_from,
+                    'text_to' => $first->text_to,
+                    'count' => $rows->count(),
+                    'item_ids' => $rows->pluck('item_id')->sort()->values(),
+                ];
+            })
+            ->sortBy(function ($row) {
+                return sprintf('%08d-%08d', (int) ($row->lesson_id ?? 0), 99999999 - (int) ($row->count ?? 0));
+            })
+            ->values();
+
+        $duplicateRows = (int) $duplicateGroups->sum(function ($row) {
+            return max(((int) ($row->count ?? 0)) - 1, 0);
+        });
+
+        // Informational: repeated across different lessons (can be intentional).
+        $reusedGroups = $allItems
+            ->groupBy('key')
+            ->filter(function ($rows) {
+                return $rows->pluck('lesson_id')->unique()->count() > 1;
+            })
+            ->map(function ($rows) {
+                $first = $rows->first();
+                return (object) [
+                    'type' => $first->type,
+                    'raw_types' => $rows->pluck('type_raw')->filter()->unique()->sort()->values(),
+                    'text_from' => $first->text_from,
+                    'text_to' => $first->text_to,
+                    'count' => $rows->count(),
+                    'lesson_ids' => $rows->pluck('lesson_id')->unique()->sort()->values(),
+                ];
+            })
+            ->sortByDesc('count')
+            ->values();
+
+        $lessonIdsForTitleLookup = $reusedGroups
+            ->pluck('lesson_ids')
+            ->flatten()
+            ->filter()
+            ->unique()
+            ->values();
+
+        $lessonTitlesLookup = collect();
+        if ($lessonIdsForTitleLookup->isNotEmpty()) {
+            $lessonTitlesLookup = DB::connection('tenant')
+                ->table('flashcard_lessons')
+                ->whereIn('id', $lessonIdsForTitleLookup)
+                ->pluck('title', 'id');
+        }
+
+        $reusedGroups = $reusedGroups->map(function ($row) use ($lessonTitlesLookup) {
+            $titles = collect($row->lesson_ids ?? collect())
+                ->map(function ($lessonId) use ($lessonTitlesLookup) {
+                    return trim((string) ($lessonTitlesLookup->get($lessonId) ?? ''));
+                })
+                ->filter()
+                ->unique()
+                ->values()
+                ->implode(' · ');
+
+            $row->lesson_titles = $titles;
+
+            return $row;
+        });
+
+        $module->is_active = (int) ($module->is_active ?? 0);
+
+        return [
+            'module' => $module,
+            'lessons' => $lessons,
+            'duplicateGroups' => $duplicateGroups,
+            'reusedGroups' => $reusedGroups,
+            'summary' => [
+                'lessons' => $lessons->count(),
+                'active_lessons' => (int) $lessons->where('is_active', 1)->count(),
+                'items' => (int) $lessons->sum('items_count'),
+                'items_with_audio' => (int) $lessons->sum('items_with_audio'),
+                'duplicate_rows' => $duplicateRows,
+                'duplicate_groups' => (int) $duplicateGroups->count(),
+                'reused_groups' => (int) $reusedGroups->count(),
+            ],
+        ];
+    }
 
     public function getDebutIntegrityReport(bool $realCheckEnabled = true, int $realCheckLimit = 500, int $startAfterId = 0): array
     {
@@ -80,6 +827,52 @@ class FlashCardsService
             'missingOnServerCount' => (int) $missingOnServerRows->count(),
             'missingOnServerRows' => $missingOnServerRows,
         ];
+    }
+
+    public function getWordsManualList(): Collection
+    {
+        $lessons = DB::connection('tenant')
+            ->table('cardsLearnWordsPag as l')
+            ->leftJoin('cardsLearnWordsCategoryPag as c', 'c.url_category', '=', 'l.group_category')
+            ->select(
+                'l.id',
+                'l.url',
+                'l.title',
+                'l.group_category',
+                'l.category',
+                'c.id as group_category_id',
+                'c.title_category as group_title'
+            )
+            ->orderByRaw('CASE WHEN c.id IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('c.id')
+            ->orderBy('l.id')
+            ->get();
+
+        $wordsByUrl = DB::connection('tenant')
+            ->table('cardsLearnWordsContent')
+            ->select('id', 'url_display', 'word_en', 'word_ru')
+            ->orderBy('url_display')
+            ->orderBy('id')
+            ->get()
+            ->groupBy('url_display');
+
+        return $lessons->map(function ($lesson) use ($wordsByUrl) {
+            $words = $wordsByUrl
+                ->get((string) ($lesson->url ?? ''), collect())
+                ->map(function ($wordRow) {
+                    return (object) [
+                        'id' => $wordRow->id ?? null,
+                        'word_en' => $wordRow->word_en ?? '',
+                        'word_ru' => $wordRow->word_ru ?? '',
+                    ];
+                })
+                ->values();
+
+            $lesson->words = $words;
+            $lesson->words_count = $words->count();
+
+            return $lesson;
+        });
     }
 
     public function getPhrasesDebutIntegrityReport(bool $realCheckEnabled = true, int $realCheckLimit = 500, int $startAfterId = 0): array
@@ -841,6 +1634,216 @@ class FlashCardsService
     private function toLikePattern(string $value): string
     {
         return '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value) . '%';
+    }
+
+    private function decodeJsonObjectFromText(string $value): array
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            throw new \RuntimeException('Empty model response.');
+        }
+
+        $decoded = $this->tryDecodeJsonObject($trimmed);
+        if ($decoded !== null) {
+            return $decoded;
+        }
+
+        $candidates = [];
+
+        if (preg_match_all('/```(?:json)?\s*([\s\S]*?)```/i', $trimmed, $matches) === 1) {
+            foreach ((array) ($matches[1] ?? []) as $block) {
+                $candidate = trim((string) $block);
+                if ($candidate !== '') {
+                    $candidates[] = $candidate;
+                }
+            }
+        }
+
+        foreach ($this->extractBalancedJsonSegments($trimmed, '{', '}') as $segment) {
+            $candidate = trim($segment);
+            if ($candidate !== '') {
+                $candidates[] = $candidate;
+            }
+        }
+
+        foreach ($this->extractBalancedJsonSegments($trimmed, '[', ']') as $segment) {
+            $candidate = trim($segment);
+            if ($candidate !== '') {
+                $candidates[] = $candidate;
+            }
+        }
+
+        $seen = [];
+        foreach ($candidates as $candidate) {
+            $hash = md5($candidate);
+            if (isset($seen[$hash])) {
+                continue;
+            }
+            $seen[$hash] = true;
+
+            $decoded = $this->tryDecodeJsonObject($candidate);
+            if ($decoded !== null) {
+                return $decoded;
+            }
+        }
+
+        $oneLine = preg_replace('/\s+/u', ' ', $trimmed);
+        $snippet = substr((string) $oneLine, 0, 300);
+        throw new \RuntimeException('Failed to parse JSON from model response. Snippet: ' . $snippet);
+    }
+
+    private function tryDecodeJsonObject(string $candidate): ?array
+    {
+        $decoded = json_decode($candidate, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+            return null;
+        }
+
+        if ($this->isAssocArray($decoded)) {
+            return $decoded;
+        }
+
+        foreach ($decoded as $item) {
+            if (is_array($item) && $this->isAssocArray($item)) {
+                return $item;
+            }
+        }
+
+        return null;
+    }
+
+    private function extractBalancedJsonSegments(string $text, string $openChar, string $closeChar): array
+    {
+        $segments = [];
+        $depth = 0;
+        $start = -1;
+        $inString = false;
+        $escape = false;
+        $length = strlen($text);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $text[$i];
+
+            if ($inString) {
+                if ($escape) {
+                    $escape = false;
+                    continue;
+                }
+                if ($char === '\\') {
+                    $escape = true;
+                    continue;
+                }
+                if ($char === '"') {
+                    $inString = false;
+                }
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = true;
+                continue;
+            }
+
+            if ($char === $openChar) {
+                if ($depth === 0) {
+                    $start = $i;
+                }
+                $depth++;
+                continue;
+            }
+
+            if ($char === $closeChar && $depth > 0) {
+                $depth--;
+                if ($depth === 0 && $start >= 0) {
+                    $segments[] = substr($text, $start, $i - $start + 1);
+                    $start = -1;
+                }
+            }
+        }
+
+        return $segments;
+    }
+
+    private function isAssocArray(array $value): bool
+    {
+        $expectedKey = 0;
+        foreach (array_keys($value) as $key) {
+            if ($key !== $expectedKey) {
+                return true;
+            }
+            $expectedKey++;
+        }
+
+        return false;
+    }
+
+    private function extractOpenAiText($value): string
+    {
+        if (is_string($value)) {
+            return trim($value);
+        }
+
+        if (is_numeric($value)) {
+            return trim((string) $value);
+        }
+
+        if (!is_array($value)) {
+            return '';
+        }
+
+        $parts = [];
+
+        if ($this->isAssocArray($value)) {
+            foreach (['output_text', 'text', 'value', 'content', 'message'] as $key) {
+                if (!array_key_exists($key, $value)) {
+                    continue;
+                }
+                $text = $this->extractOpenAiText($value[$key]);
+                if ($text !== '') {
+                    $parts[] = $text;
+                }
+            }
+
+            if ($parts !== []) {
+                return trim(implode(PHP_EOL, $parts));
+            }
+        }
+
+        foreach ($value as $item) {
+            $text = $this->extractOpenAiText($item);
+            if ($text !== '') {
+                $parts[] = $text;
+            }
+        }
+
+        return trim(implode(PHP_EOL, $parts));
+    }
+
+    private function sqlQuoteString(string $value): string
+    {
+        return "'" . str_replace("'", "''", $value) . "'";
+    }
+
+    private function normalizeV2ItemType(string $type): string
+    {
+        $value = strtolower(trim($type));
+        if ($value === 'questions') {
+            return 'question';
+        }
+        if ($value === 'phrases') {
+            return 'phrase';
+        }
+        if ($value === 'words') {
+            return 'word';
+        }
+
+        return $value;
+    }
+
+    private function normalizeV2DuplicateText(string $value): string
+    {
+        $normalized = preg_replace('/\s+/u', ' ', trim($value));
+        return trim((string) ($normalized ?? ''));
     }
 
     private function resolveFlashCardsAudioUrl(string $filePath): ?string

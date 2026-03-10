@@ -80,6 +80,9 @@ Route::middleware('auth')->group(function () {
         return view('datatables');
     });
 
+    Route::view('/color-app', 'lab.color-app')
+        ->name('lab.color-app');
+
     Route::get('/structure-in-app', function () {
         return view('app.structure-in-app');
     });
@@ -1832,6 +1835,10 @@ Route::middleware('auth')->group(function () {
         ->name('flash-cards.phrases-lessons.show');
     Route::get('/flash-cards-v2', [FlashCardsController::class, 'v2'])
         ->name('flash-cards.v2');
+    Route::get('/flash-cards-v2/progress', [FlashCardsController::class, 'showV2Progress'])
+        ->name('flash-cards.v2.progress');
+    Route::get('/flash-cards-v2/download-json', [FlashCardsController::class, 'downloadV2Json'])
+        ->name('flash-cards.v2.download-json');
     Route::get('/flash-cards-v2/modules/{moduleId}', [FlashCardsController::class, 'showV2Module'])
         ->where('moduleId', '[0-9]+')
         ->name('flash-cards.v2.module');

@@ -21,6 +21,14 @@
                                 <p class="mt-2 text-sm text-slate-600">Categorie (module) cu lecții afișate dedesubt, pe carduri.</p>
                             </div>
                             <div>
+                                <a href="{{ route('flash-cards.v2.progress') }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                                    <i class="fa-solid fa-chart-column"></i>
+                                    User Progress
+                                </a>
+                                <a href="{{ route('flash-cards.v2.download-json', ['type' => 'all']) }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                                    <i class="fa-solid fa-download"></i>
+                                    Download JSON (all)
+                                </a>
                                 <a href="{{ route('flash-cards.index') }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                                     <i class="fa-solid fa-arrow-left"></i>
                                     Back to Flash-cards
@@ -64,7 +72,63 @@
                             <div class="text-xs font-semibold text-amber-700">Duplicate extra rows</div>
                             <div class="mt-2 text-xl font-semibold text-amber-700">{{ number_format((int) (($summary['reused_rows_global'] ?? 0))) }}</div>
                         </div>
+                        <div class="rounded-2xl border border-rose-300 bg-rose-50 p-4">
+                            <div class="text-xs font-semibold text-rose-700">Same-lesson duplicate groups</div>
+                            <div class="mt-2 text-xl font-semibold text-rose-700">{{ number_format((int) (($summary['same_lesson_duplicate_groups_global'] ?? 0))) }}</div>
+                        </div>
+                        <div class="rounded-2xl border border-rose-300 bg-rose-50 p-4">
+                            <div class="text-xs font-semibold text-rose-700">Same-lesson extra rows</div>
+                            <div class="mt-2 text-xl font-semibold text-rose-700">{{ number_format((int) (($summary['same_lesson_duplicate_rows_global'] ?? 0))) }}</div>
+                        </div>
                     </div>
+
+                    @if (($globalSameLessonDuplicates ?? collect())->isNotEmpty())
+                        <section class="mt-6 rounded-2xl border border-rose-300 bg-rose-50 p-5 shadow-sm">
+                            <h2 class="text-lg font-semibold text-rose-700">Real Duplicates In Same Lesson (global)</h2>
+                            <p class="mt-1 text-sm text-rose-700">
+                                Duplicări reale în aceeași lecție: <code>lesson_id + type + text_from + text_to</code>.
+                            </p>
+
+                            <div class="mt-4 overflow-x-auto rounded-xl border border-rose-200 bg-white">
+                                <table class="min-w-full divide-y divide-rose-100 text-sm">
+                                    <thead class="bg-rose-50 text-xs uppercase tracking-wide text-rose-700">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left">Module</th>
+                                            <th class="px-3 py-2 text-left">Lesson</th>
+                                            <th class="px-3 py-2 text-left">Type (norm)</th>
+                                            <th class="px-3 py-2 text-left">Type (raw)</th>
+                                            <th class="px-3 py-2 text-left">Text from</th>
+                                            <th class="px-3 py-2 text-left">Text to</th>
+                                            <th class="px-3 py-2 text-left">Count</th>
+                                            <th class="px-3 py-2 text-left">Row IDs</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-rose-100">
+                                        @foreach (($globalSameLessonDuplicates ?? collect()) as $row)
+                                            <tr class="align-top">
+                                                <td class="px-3 py-2 text-rose-700">
+                                                    <a class="text-sky-600 hover:underline" target="_blank" href="{{ route('flash-cards.v2.module', ['moduleId' => (int) ($row->module_id ?? 0)]) }}">
+                                                        #{{ (int) ($row->module_id ?? 0) }}
+                                                    </a>
+                                                </td>
+                                                <td class="px-3 py-2 text-rose-700">
+                                                    <a class="text-sky-600 hover:underline" target="_blank" href="{{ route('flash-cards.v2.lesson', ['lessonId' => (int) ($row->lesson_id ?? 0)]) }}">
+                                                        {{ trim((string) ($row->lesson_title ?? '')) !== '' ? $row->lesson_title : 'Lesson' }} (#{{ (int) ($row->lesson_id ?? 0) }})
+                                                    </a>
+                                                </td>
+                                                <td class="px-3 py-2 text-rose-700">{{ trim((string) ($row->type ?? '')) !== '' ? $row->type : '-' }}</td>
+                                                <td class="px-3 py-2 text-rose-700">{{ trim((string) ($row->raw_types ?? '')) !== '' ? $row->raw_types : '-' }}</td>
+                                                <td class="px-3 py-2 text-rose-700">{{ trim((string) ($row->text_from ?? '')) !== '' ? $row->text_from : '-' }}</td>
+                                                <td class="px-3 py-2 text-rose-700">{{ trim((string) ($row->text_to ?? '')) !== '' ? $row->text_to : '-' }}</td>
+                                                <td class="px-3 py-2 font-semibold text-rose-700">{{ number_format((int) ($row->total_count ?? 0)) }}</td>
+                                                <td class="px-3 py-2 text-rose-700">{{ trim((string) ($row->row_ids ?? '')) !== '' ? $row->row_ids : '-' }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    @endif
 
                     @if (($globalReusedGroups ?? collect())->isNotEmpty())
                         <section class="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-sm">
@@ -259,9 +323,11 @@
                             <div class="mb-2 text-sm font-semibold text-slate-700">Request preview</div>
                             <pre id="dupGptPreviewText" class="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700">No data.</pre>
                             <div class="mt-3 flex flex-wrap gap-2">
-                                <button id="dupGptConfirmButton" type="button" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">Confirm send</button>
+                                <button id="dupGptConfirmButton" type="button" class="hidden rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">Confirm send</button>
+                                <button id="dupGptCopyJsonButton" type="button" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Copy JSON</button>
                                 <span id="dupGptLoadingLabel" class="hidden text-xs text-slate-500">Processing...</span>
                             </div>
+                            <p class="mt-2 text-xs italic text-slate-500">P.S. Confirm send button is hidden temporarily.</p>
                         </section>
 
                         <section class="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -286,12 +352,14 @@
                 const closeButton = document.getElementById('dupGptCloseButton');
                 const previewText = document.getElementById('dupGptPreviewText');
                 const confirmButton = document.getElementById('dupGptConfirmButton');
+                const copyJsonButton = document.getElementById('dupGptCopyJsonButton');
                 const loadingLabel = document.getElementById('dupGptLoadingLabel');
                 const resultMeta = document.getElementById('dupGptResultMeta');
                 const sqlOutput = document.getElementById('dupGptSqlOutput');
                 const rawJson = document.getElementById('dupGptRawJson');
                 const copySqlButton = document.getElementById('dupGptCopySqlButton');
                 let activePayload = null;
+                let activePreview = null;
 
                 if (!overlay || !previewText || !confirmButton) {
                     return;
@@ -403,6 +471,7 @@
                         }
 
                         activePayload = payload;
+                        activePreview = null;
                         openModal();
                         resetResultPanel();
                         previewText.textContent = 'Loading preview...';
@@ -410,9 +479,11 @@
 
                         postJson(previewEndpoint, payload)
                             .then(function (json) {
-                                previewText.textContent = JSON.stringify(json.preview || {}, null, 2);
+                                activePreview = json.preview || null;
+                                previewText.textContent = JSON.stringify(activePreview || {}, null, 2);
                             })
                             .catch(function (error) {
+                                activePreview = null;
                                 previewText.textContent = 'Preview error: ' + (error && error.message ? error.message : 'Unknown error');
                                 showError(error && error.message ? error.message : 'Preview failed.');
                             })
@@ -435,7 +506,7 @@
                     postJson(askEndpoint, activePayload)
                         .then(function (json) {
                             const result = json.result || {};
-                            resultMeta.textContent = 'model: ' + (result.model || '-') + ' | keep_item_id: ' + (result.keep_item_id || '-') + ' | update_item_id: ' + (result.update_item_id || '-');
+                            resultMeta.textContent = 'model: ' + (result.model || '-') + ' | update_item_id: ' + (result.update_item_id || '-') + ' | lesson_id: ' + (result.update_lesson_id || '-');
                             sqlOutput.value = result.sql || '';
                             rawJson.textContent = JSON.stringify(result.raw_model_response || {}, null, 2);
                             showSuccess('GPT response received.');
@@ -449,6 +520,31 @@
                             setLoading(false);
                         });
                 });
+
+                if (copyJsonButton) {
+                    copyJsonButton.addEventListener('click', function () {
+                        if (!navigator.clipboard) {
+                            showError('Clipboard is not available.');
+                            return;
+                        }
+
+                        const payloadText = activePreview
+                            ? JSON.stringify(activePreview, null, 2)
+                            : (activePayload ? JSON.stringify(activePayload, null, 2) : '');
+                        if (!payloadText) {
+                            showError('No JSON payload to copy.');
+                            return;
+                        }
+
+                        navigator.clipboard.writeText(payloadText)
+                            .then(function () {
+                                showSuccess('JSON copied.');
+                            })
+                            .catch(function () {
+                                showError('Unable to copy JSON.');
+                            });
+                    });
+                }
 
                 if (copySqlButton) {
                     copySqlButton.addEventListener('click', function () {

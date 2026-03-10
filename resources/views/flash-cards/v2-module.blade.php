@@ -35,9 +35,13 @@
                                 <span class="{{ $moduleIsActive ? 'rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700' : 'rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700' }}">
                                     is_active: {{ $module->is_active ?? 0 }}
                                 </span>
-                                <a href="{{ route('flash-cards.v2.module.plain', ['moduleId' => $module->id]) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                <a href="{{ route('flash-cards.v2.module.plain', ['moduleId' => $module->id, 'type' => 'word']) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                                     <i class="fa-solid fa-list"></i>
-                                    Full list (plain)
+                                    Plain JSON (words)
+                                </a>
+                                <a href="{{ route('flash-cards.v2.module.plain', ['moduleId' => $module->id, 'type' => 'all']) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                    <i class="fa-solid fa-layer-group"></i>
+                                    Plain JSON (all)
                                 </a>
                                 <a href="{{ route('flash-cards.v2') }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                                     <i class="fa-solid fa-arrow-left"></i>

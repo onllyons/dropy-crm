@@ -16,6 +16,7 @@ class FlashCardsController extends Controller
         $error = null;
         $modules = collect();
         $globalReusedGroups = collect();
+        $globalSameLessonDuplicates = collect();
         $summary = [
             'modules' => 0,
             'lessons' => 0,
@@ -24,6 +25,8 @@ class FlashCardsController extends Controller
             'items' => 0,
             'reused_groups_global' => 0,
             'reused_rows_global' => 0,
+            'same_lesson_duplicate_groups_global' => 0,
+            'same_lesson_duplicate_rows_global' => 0,
         ];
 
         try {
@@ -31,6 +34,7 @@ class FlashCardsController extends Controller
             $modules = $data['modules'] ?? collect();
             $summary = $data['summary'] ?? $summary;
             $globalReusedGroups = $data['globalReusedGroups'] ?? collect();
+            $globalSameLessonDuplicates = $data['globalSameLessonDuplicates'] ?? collect();
         } catch (\Throwable $e) {
             $error = $e->getMessage();
         }
@@ -38,7 +42,62 @@ class FlashCardsController extends Controller
         return view('flash-cards.v2', [
             'modules' => $modules,
             'globalReusedGroups' => $globalReusedGroups,
+            'globalSameLessonDuplicates' => $globalSameLessonDuplicates,
             'summary' => $summary,
+            'error' => $error,
+        ]);
+    }
+
+    public function downloadV2Json(Request $request, FlashCardsService $service)
+    {
+        $type = strtolower(trim((string) $request->query('type', 'all')));
+        if (!in_array($type, ['all', 'word'], true)) {
+            $type = 'all';
+        }
+
+        $payload = $service->getV2ExportPayload($type);
+        $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($json)) {
+            $json = '{}';
+        }
+
+        $fileName = 'flash-cards-v2-' . $type . '-' . now()->format('Ymd-His') . '.json';
+
+        return response($json, 200, [
+            'Content-Type' => 'application/json; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+        ]);
+    }
+
+    public function showV2Progress(Request $request, FlashCardsService $service): View
+    {
+        $error = null;
+        $progress = [
+            'filters' => [
+                'q' => '',
+                'status' => 'all',
+            ],
+            'summary' => [
+                'users_with_attempts' => 0,
+                'attempts_total' => 0,
+                'completed_attempts' => 0,
+                'in_progress_attempts' => 0,
+                'completed_lessons_distinct' => 0,
+                'total_time_seconds' => 0,
+                'catalog_lessons_total' => 0,
+            ],
+            'users' => collect(),
+            'attempts' => collect(),
+        ];
+
+        try {
+            $progress = $service->getV2AttemptsProgress($request->only(['q', 'status']));
+        } catch (\Throwable $e) {
+            $error = $e->getMessage();
+        }
+
+        return view('flash-cards-v2-progress.index', [
+            'progress' => $progress,
             'error' => $error,
         ]);
     }

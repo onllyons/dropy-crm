@@ -78,6 +78,8 @@ class FlashCardsService
             'items' => (int) $moduleCards->sum('items_count'),
             'reused_groups_global' => 0,
             'reused_rows_global' => 0,
+            'same_lesson_duplicate_groups_global' => 0,
+            'same_lesson_duplicate_rows_global' => 0,
         ];
 
         $globalTypeExpr = "CASE LOWER(TRIM(COALESCE(i.type, ''))) WHEN 'questions' THEN 'question' WHEN 'question' THEN 'question' WHEN 'phrases' THEN 'phrase' WHEN 'phrase' THEN 'phrase' WHEN 'words' THEN 'word' WHEN 'word' THEN 'word' ELSE LOWER(TRIM(COALESCE(i.type, ''))) END";
@@ -110,10 +112,293 @@ class FlashCardsService
             return max(((int) ($row->total_count ?? 0)) - 1, 0);
         });
 
+        $globalSameLessonDuplicates = DB::connection('tenant')
+            ->table('flashcard_items as i')
+            ->join('flashcard_lessons as l', 'l.id', '=', 'i.lesson_id')
+            ->select('l.module_id', 'l.id as lesson_id', 'l.title as lesson_title')
+            ->selectRaw($globalTypeExpr . ' as type')
+            ->selectRaw($globalFromExpr . ' as text_from')
+            ->selectRaw($globalToExpr . ' as text_to')
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw("GROUP_CONCAT(i.id ORDER BY i.id ASC SEPARATOR ', ') as row_ids")
+            ->selectRaw("GROUP_CONCAT(DISTINCT LOWER(TRIM(COALESCE(i.type, ''))) ORDER BY LOWER(TRIM(COALESCE(i.type, ''))) ASC SEPARATOR ', ') as raw_types")
+            ->where(function ($query) {
+                $query->whereRaw("TRIM(COALESCE(i.text_from, '')) <> ''")
+                    ->orWhereRaw("TRIM(COALESCE(i.text_to, '')) <> ''");
+            })
+            ->groupBy('l.module_id', 'l.id', 'l.title')
+            ->groupByRaw($globalTypeExpr . ', ' . $globalFromExpr . ', ' . $globalToExpr)
+            ->havingRaw('COUNT(*) > 1')
+            ->orderByDesc('total_count')
+            ->orderBy('l.module_id')
+            ->orderBy('l.id')
+            ->get();
+
+        $summary['same_lesson_duplicate_groups_global'] = (int) $globalSameLessonDuplicates->count();
+        $summary['same_lesson_duplicate_rows_global'] = (int) $globalSameLessonDuplicates->sum(function ($row) {
+            return max(((int) ($row->total_count ?? 0)) - 1, 0);
+        });
+
         return [
             'modules' => $moduleCards,
             'summary' => $summary,
             'globalReusedGroups' => $globalReusedGroups,
+            'globalSameLessonDuplicates' => $globalSameLessonDuplicates,
+        ];
+    }
+
+    public function getV2ExportPayload(string $type = 'all'): array
+    {
+        $mode = strtolower(trim($type)) === 'word' ? 'word' : 'all';
+
+        $modules = DB::connection('tenant')
+            ->table('flashcard_modules')
+            ->select('id', 'title', 'slug', 'description', 'sort_order', 'is_active')
+            ->orderByRaw('CASE WHEN sort_order IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->keyBy(function ($row) {
+                return (int) ($row->id ?? 0);
+            });
+
+        $lessonsByModule = DB::connection('tenant')
+            ->table('flashcard_lessons')
+            ->select('id', 'module_id', 'title', 'url', 'lesson_type', 'level', 'sort_order', 'is_active')
+            ->orderByRaw('CASE WHEN sort_order IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->groupBy(function ($row) {
+                return (int) ($row->module_id ?? 0);
+            });
+
+        $itemsQuery = DB::connection('tenant')
+            ->table('flashcard_items')
+            ->select('id', 'lesson_id', 'type', 'text_from', 'text_to', 'ipa')
+            ->orderBy('lesson_id')
+            ->orderBy('id');
+
+        if ($mode === 'word') {
+            $itemsQuery->whereRaw("LOWER(TRIM(COALESCE(type, ''))) IN ('word', 'words')");
+        }
+
+        $itemsByLesson = $itemsQuery
+            ->get()
+            ->groupBy(function ($row) {
+                return (int) ($row->lesson_id ?? 0);
+            });
+
+        $modulesPayload = $modules->map(function ($module, $moduleId) use ($lessonsByModule, $itemsByLesson, $mode) {
+            $lessonPayload = collect($lessonsByModule->get((int) $moduleId, collect()))
+                ->map(function ($lesson) use ($itemsByLesson, $mode) {
+                    $isWordsLesson = strtolower(trim((string) ($lesson->lesson_type ?? ''))) === 'words';
+                    if ($mode === 'word' && !$isWordsLesson) {
+                        return null;
+                    }
+
+                    $rows = collect($itemsByLesson->get((int) ($lesson->id ?? 0), collect()));
+                    if ($mode === 'word') {
+                        $rows = $rows->filter(function ($item) {
+                            return strtolower(trim((string) ($item->type ?? ''))) === 'word';
+                        })->values();
+                    }
+
+                    if ($rows->isEmpty()) {
+                        return null;
+                    }
+
+                    $items = $rows->map(function ($item) use ($isWordsLesson) {
+                        $itemRow = [
+                            'id' => (int) ($item->id ?? 0),
+                            'text_from' => trim((string) ($item->text_from ?? '')),
+                            'text_to' => trim((string) ($item->text_to ?? '')),
+                            'type' => trim((string) ($item->type ?? '')),
+                        ];
+
+                        if ($isWordsLesson) {
+                            $itemRow['ipa'] = trim((string) ($item->ipa ?? ''));
+                        }
+
+                        return $itemRow;
+                    })->values()->all();
+
+                    return [
+                        'lesson_id' => (int) ($lesson->id ?? 0),
+                        'title' => trim((string) ($lesson->title ?? '')),
+                        'url' => trim((string) ($lesson->url ?? '')),
+                        'level' => trim((string) ($lesson->level ?? '')),
+                        'type' => trim((string) ($lesson->lesson_type ?? '')),
+                        'items_total' => count($items),
+                        'items' => $items,
+                    ];
+                })
+                ->filter()
+                ->values()
+                ->all();
+
+            if (empty($lessonPayload)) {
+                return null;
+            }
+
+            return [
+                'module_id' => (int) ($module->id ?? 0),
+                'title' => trim((string) ($module->title ?? '')),
+                'slug' => trim((string) ($module->slug ?? '')),
+                'description' => trim((string) ($module->description ?? '')),
+                'is_active' => (int) ($module->is_active ?? 0),
+                'lessons_total' => count($lessonPayload),
+                'lessons' => $lessonPayload,
+            ];
+        })->filter()->values()->all();
+
+        return [
+            'exported_at' => now()->toDateTimeString(),
+            'type' => $mode,
+            'modules_total' => count($modulesPayload),
+            'modules' => $modulesPayload,
+        ];
+    }
+
+    public function getV2AttemptsProgress(array $filters = []): array
+    {
+        $search = trim((string) ($filters['q'] ?? ''));
+        $status = strtolower(trim((string) ($filters['status'] ?? 'all')));
+        if (!in_array($status, ['all', 'completed', 'in_progress'], true)) {
+            $status = 'all';
+        }
+
+        $usersPerPage = 25;
+        $attemptsPerPage = 50;
+        $totalLessons = (int) DB::connection('tenant')->table('flashcard_lessons')->count();
+
+        $matchingUserIds = $this->resolveFlashcardAttemptUserIds($search);
+        $baseQuery = DB::connection('tenant')
+            ->table('flashcard_lesson_attempts as a')
+            ->leftJoin('flashcard_lessons as l', 'l.id', '=', 'a.lesson_id')
+            ->leftJoin('flashcard_modules as m', 'm.id', '=', 'l.module_id');
+
+        if ($matchingUserIds !== null) {
+            if ($matchingUserIds->isEmpty()) {
+                $baseQuery->whereRaw('1 = 0');
+            } else {
+                $baseQuery->whereIn('a.user_id', $matchingUserIds->all());
+            }
+        }
+
+        if ($status !== 'all') {
+            $baseQuery->where('a.status', $status);
+        }
+
+        $summaryBase = clone $baseQuery;
+        $summary = [
+            'users_with_attempts' => (int) (clone $summaryBase)->distinct()->count('a.user_id'),
+            'attempts_total' => (int) (clone $summaryBase)->count(),
+            'completed_attempts' => (int) (clone $summaryBase)->where('a.status', 'completed')->count(),
+            'in_progress_attempts' => (int) (clone $summaryBase)->where('a.status', 'in_progress')->count(),
+            'completed_lessons_distinct' => (int) (clone $summaryBase)
+                ->where('a.status', 'completed')
+                ->distinct()
+                ->count(DB::raw("CONCAT(a.user_id, '#', a.lesson_id)")),
+            'total_time_seconds' => (int) ((clone $summaryBase)
+                ->selectRaw('COALESCE(SUM(COALESCE(a.lesson_time_seconds, 0) + COALESCE(a.quiz_time_seconds, 0)), 0) as total_time_seconds')
+                ->value('total_time_seconds') ?? 0),
+            'catalog_lessons_total' => $totalLessons,
+        ];
+
+        $usersQuery = clone $baseQuery;
+        $usersPaginator = $usersQuery
+            ->select('a.user_id')
+            ->selectRaw('COUNT(*) as attempts_total')
+            ->selectRaw("SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed_attempts")
+            ->selectRaw("SUM(CASE WHEN a.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress_attempts")
+            ->selectRaw("COUNT(DISTINCT CASE WHEN a.status = 'completed' THEN a.lesson_id END) as completed_lessons")
+            ->selectRaw('COALESCE(SUM(COALESCE(a.lesson_time_seconds, 0) + COALESCE(a.quiz_time_seconds, 0)), 0) as total_time_seconds')
+            ->selectRaw('COALESCE(SUM(COALESCE(a.questions_total, 0)), 0) as questions_total')
+            ->selectRaw('COALESCE(SUM(COALESCE(a.answers_correct, 0)), 0) as answers_correct')
+            ->selectRaw('COALESCE(SUM(COALESCE(a.answers_wrong, 0)), 0) as answers_wrong')
+            ->selectRaw('MAX(COALESCE(a.updated_at, a.completed_at, a.started_at, a.created_at)) as last_activity_at')
+            ->groupBy('a.user_id')
+            ->orderByDesc('completed_lessons')
+            ->orderByDesc('attempts_total')
+            ->orderByDesc('last_activity_at')
+            ->paginate($usersPerPage, ['*'], 'users_page')
+            ->withQueryString();
+
+        $usersById = $this->getUsersByIds(collect($usersPaginator->items())->pluck('user_id'));
+        $usersPaginator->getCollection()->transform(function ($row) use ($usersById, $totalLessons) {
+            $user = $usersById->get((int) ($row->user_id ?? 0));
+            $completedLessons = (int) ($row->completed_lessons ?? 0);
+            $questionsTotal = (int) ($row->questions_total ?? 0);
+            $answersCorrect = (int) ($row->answers_correct ?? 0);
+
+            $row->user_label = $user
+                ? trim((string) (($user->username ?? '') !== '' ? $user->username : ($user->name ?? '')))
+                : null;
+            $row->user_name = $user ? trim((string) ($user->name ?? '')) : null;
+            $row->progress_percent = $totalLessons > 0
+                ? round(($completedLessons / $totalLessons) * 100, 1)
+                : 0.0;
+            $row->accuracy_percent = $questionsTotal > 0
+                ? round(($answersCorrect / $questionsTotal) * 100, 1)
+                : null;
+
+            return $row;
+        });
+
+        $attemptsQuery = clone $baseQuery;
+        $attemptsPaginator = $attemptsQuery
+            ->select(
+                'a.id',
+                'a.user_id',
+                'a.lesson_id',
+                'a.attempt_number',
+                'a.status',
+                'a.started_at',
+                'a.completed_at',
+                'a.lesson_time_seconds',
+                'a.quiz_time_seconds',
+                'a.questions_total',
+                'a.answers_correct',
+                'a.answers_wrong',
+                'a.created_at',
+                'a.updated_at',
+                'l.title as lesson_title',
+                'l.level as lesson_level',
+                'l.lesson_type',
+                'm.id as module_id',
+                'm.title as module_title'
+            )
+            ->orderByDesc('a.id')
+            ->paginate($attemptsPerPage, ['*'], 'attempts_page')
+            ->withQueryString();
+
+        $attemptUsersById = $this->getUsersByIds(collect($attemptsPaginator->items())->pluck('user_id'));
+        $attemptsPaginator->getCollection()->transform(function ($row) use ($attemptUsersById) {
+            $user = $attemptUsersById->get((int) ($row->user_id ?? 0));
+            $questionsTotal = (int) ($row->questions_total ?? 0);
+            $answersCorrect = (int) ($row->answers_correct ?? 0);
+
+            $row->user_label = $user
+                ? trim((string) (($user->username ?? '') !== '' ? $user->username : ($user->name ?? '')))
+                : null;
+            $row->user_name = $user ? trim((string) ($user->name ?? '')) : null;
+            $row->accuracy_percent = $questionsTotal > 0
+                ? round(($answersCorrect / $questionsTotal) * 100, 1)
+                : null;
+            $row->total_time_seconds = (int) ($row->lesson_time_seconds ?? 0) + (int) ($row->quiz_time_seconds ?? 0);
+
+            return $row;
+        });
+
+        return [
+            'filters' => [
+                'q' => $search,
+                'status' => $status,
+            ],
+            'summary' => $summary,
+            'users' => $usersPaginator,
+            'attempts' => $attemptsPaginator,
         ];
     }
 
@@ -369,15 +654,10 @@ Your task:
 3) Do NOT invent IDs.
 4) Use only IDs from allowed_item_ids.
 5) Do NOT delete rows.
-6) Return ONLY JSON with:
-   - keep_item_id
-   - update_item_id
-   - updated_fields:
-        text_from
-        text_to
-        ipa
-   - sql (single UPDATE statement for update_item_id)
-   If the proposed replacement lowers the lexical difficulty compared to the lesson's existing words, reject it and choose a more appropriate alternative.
+6) Return ONLY one SQL statement, nothing else:
+   UPDATE `flashcard_items` SET `text_from`='...', `text_to`='...', `ipa`='...', `updated_at`=NOW() WHERE `id`=... AND `lesson_id`=... LIMIT 1;
+7) The SQL must update exactly one row from allowed_item_ids.
+8) If the proposed replacement lowers the lexical difficulty compared to the lesson's existing words, choose a more appropriate alternative.
 PROMPT;
 
         $userPayload = [
@@ -392,159 +672,171 @@ PROMPT;
             throw new \RuntimeException('Invalid payload JSON.');
         }
 
-        $responseSchema = [
-            'type' => 'object',
-            'additionalProperties' => false,
-            'required' => ['keep_item_id', 'update_item_id', 'updated_fields'],
-            'properties' => [
-                'keep_item_id' => ['type' => 'integer'],
-                'update_item_id' => ['type' => 'integer'],
-                'updated_fields' => [
-                    'type' => 'object',
-                    'additionalProperties' => false,
-                    'required' => ['text_from', 'text_to', 'ipa'],
-                    'properties' => [
-                        'text_from' => ['type' => 'string'],
-                        'text_to' => ['type' => 'string'],
-                        'ipa' => ['type' => 'string'],
-                    ],
-                ],
-                'sql' => ['type' => 'string'],
-            ],
-        ];
-
-        $rawText = '';
-        $errors = [];
-
-        $responsesResponse = Http::withToken($apiKey)
-            ->timeout(90)
-            ->post('https://api.openai.com/v1/responses', [
-                'model' => $model,
-                'input' => [
-                    ['role' => 'system', 'content' => $systemPrompt],
-                    ['role' => 'user', 'content' => $userPayloadJson],
-                ],
-                'text' => [
-                    'format' => [
-                        'type' => 'json_schema',
-                        'name' => 'flashcard_dedup_update',
-                        'strict' => true,
-                        'schema' => $responseSchema,
-                    ],
-                ],
-            ]);
-
-        if ($responsesResponse->successful()) {
-            $rawText = $this->extractOpenAiText($responsesResponse->json('output_text', ''));
-            if ($rawText === '') {
-                $rawText = $this->extractOpenAiText($responsesResponse->json('output', []));
-            }
-        } else {
-            $errors[] = 'responses: HTTP ' . $responsesResponse->status() . ' ' . $this->summarizeOpenAiErrorBody((string) $responsesResponse->body());
-        }
-
-        if ($rawText === '') {
-            $chatResponse = Http::withToken($apiKey)
-                ->timeout(90)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => $model,
-                    'temperature' => 0,
-                    'response_format' => [
-                        'type' => 'json_object',
-                    ],
-                    'messages' => [
-                        ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user', 'content' => $userPayloadJson],
-                    ],
-                ]);
-
-            if ($chatResponse->successful()) {
-                $rawText = $this->extractOpenAiText($chatResponse->json('choices.0.message.content', ''));
-            } else {
-                $errors[] = 'chat.completions: HTTP ' . $chatResponse->status() . ' ' . $this->summarizeOpenAiErrorBody((string) $chatResponse->body());
-            }
-        }
-
-        if ($rawText === '') {
-            $suffix = $errors !== [] ? ' | ' . implode(' | ', $errors) : '';
-            throw new \RuntimeException('OpenAI response is empty.' . $suffix);
-        }
-
-        $decoded = $this->decodeJsonObjectFromText($rawText);
-        $keepItemId = (int) ($decoded['keep_item_id'] ?? 0);
-        $updateItemId = (int) ($decoded['update_item_id'] ?? 0);
-
-        if (!$allowedItemIds->contains($keepItemId) || !$allowedItemIds->contains($updateItemId) || $keepItemId === $updateItemId) {
-            throw new \RuntimeException('OpenAI returned unsafe item IDs.');
-        }
-
         $duplicateMap = collect($preview['duplicate_items'] ?? [])
             ->keyBy(function ($row) {
                 return (int) ($row['id'] ?? 0);
             });
-        $updateRow = $duplicateMap->get($updateItemId);
-        if (!$updateRow) {
-            throw new \RuntimeException('Unable to map update item to lesson.');
-        }
+        $maxAttempts = 3;
+        $attemptErrors = [];
+        $final = null;
 
-        $updatedFields = is_array($decoded['updated_fields'] ?? null) ? $decoded['updated_fields'] : [];
-        $nextTextFrom = array_key_exists('text_from', $updatedFields)
-            ? trim((string) ($updatedFields['text_from'] ?? ''))
-            : trim((string) ($updateRow['text_from'] ?? ''));
-        $nextTextTo = array_key_exists('text_to', $updatedFields)
-            ? trim((string) ($updatedFields['text_to'] ?? ''))
-            : trim((string) ($updateRow['text_to'] ?? ''));
-        $nextIpa = array_key_exists('ipa', $updatedFields)
-            ? trim((string) ($updatedFields['ipa'] ?? ''))
-            : trim((string) ($updateRow['ipa'] ?? ''));
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            $rawText = '';
+            $errors = [];
+            $attemptPrompt = $systemPrompt;
 
-        if ($nextTextFrom === '' && $nextTextTo === '') {
-            throw new \RuntimeException('OpenAI returned empty text_from and text_to.');
-        }
+            if ($attempt > 1 && $attemptErrors !== []) {
+                $attemptPrompt .= "\nIMPORTANT: Previous proposal was rejected because: " . end($attemptErrors) . ".\nReturn a different replacement and keep strict JSON output.";
+            }
 
-        $updateLessonId = (int) ($updateRow['lesson_id'] ?? 0);
-        $targetTypeNorm = $this->normalizeV2ItemType((string) ($preview['target']['type_norm'] ?? ($updateRow['type'] ?? '')));
-        $originalTextFrom = trim((string) ($updateRow['text_from'] ?? ''));
-        $originalTextTo = trim((string) ($updateRow['text_to'] ?? ''));
-        $originalNormFrom = $this->normalizeV2DuplicateText($originalTextFrom);
-        $originalNormTo = $this->normalizeV2DuplicateText($originalTextTo);
-        $nextNormFrom = $this->normalizeV2DuplicateText($nextTextFrom);
-        $nextNormTo = $this->normalizeV2DuplicateText($nextTextTo);
+            $responsesResponse = Http::withToken($apiKey)
+                ->timeout(90)
+                ->post('https://api.openai.com/v1/responses', [
+                    'model' => $model,
+                    'input' => [
+                        ['role' => 'system', 'content' => $attemptPrompt],
+                        ['role' => 'user', 'content' => $userPayloadJson],
+                    ],
+                ]);
 
-        if ($nextNormFrom === $originalNormFrom && $nextNormTo === $originalNormTo) {
-            throw new \RuntimeException('OpenAI returned same text_from/text_to. No replacement was generated.');
-        }
+            if ($responsesResponse->successful()) {
+                $rawText = $this->extractOpenAiText($responsesResponse->json('output_text', ''));
+                if ($rawText === '') {
+                    $rawText = $this->extractOpenAiText($responsesResponse->json('output', []));
+                }
+            } else {
+                $errors[] = 'responses: HTTP ' . $responsesResponse->status() . ' ' . $this->summarizeOpenAiErrorBody((string) $responsesResponse->body());
+            }
 
-        $updateLesson = collect($preview['lessons'] ?? [])
-            ->first(function ($lesson) use ($updateLessonId) {
-                return (int) ($lesson['id'] ?? 0) === $updateLessonId;
-            });
-        if (is_array($updateLesson)) {
-            $duplicateInsideLesson = collect($updateLesson['items'] ?? [])
-                ->contains(function ($item) use ($updateItemId, $targetTypeNorm, $nextNormFrom, $nextNormTo) {
-                    return (int) ($item['id'] ?? 0) !== $updateItemId
-                        && $this->normalizeV2ItemType((string) ($item['type'] ?? '')) === $targetTypeNorm
-                        && $this->normalizeV2DuplicateText((string) ($item['text_from'] ?? '')) === $nextNormFrom
-                        && $this->normalizeV2DuplicateText((string) ($item['text_to'] ?? '')) === $nextNormTo;
+            if ($rawText === '') {
+                $chatResponse = Http::withToken($apiKey)
+                    ->timeout(90)
+                    ->post('https://api.openai.com/v1/chat/completions', [
+                        'model' => $model,
+                        'temperature' => 0,
+                        'response_format' => [
+                            'type' => 'json_object',
+                        ],
+                        'messages' => [
+                            ['role' => 'system', 'content' => $attemptPrompt],
+                            ['role' => 'user', 'content' => $userPayloadJson],
+                        ],
+                    ]);
+
+                if ($chatResponse->successful()) {
+                    $rawText = $this->extractOpenAiText($chatResponse->json('choices.0.message.content', ''));
+                } else {
+                    $errors[] = 'chat.completions: HTTP ' . $chatResponse->status() . ' ' . $this->summarizeOpenAiErrorBody((string) $chatResponse->body());
+                }
+            }
+
+            if ($rawText === '') {
+                $attemptErrors[] = 'OpenAI response is empty.' . ($errors !== [] ? ' ' . implode(' | ', $errors) : '');
+                continue;
+            }
+
+            $sqlCandidate = $this->extractFirstUpdateSql($rawText);
+            if ($sqlCandidate === null) {
+                $attemptErrors[] = 'Model did not return an UPDATE statement.';
+                continue;
+            }
+
+            $parsedSql = $this->parseFlashcardUpdateSql($sqlCandidate);
+            if ($parsedSql === null) {
+                $attemptErrors[] = 'Model returned invalid SQL format.';
+                continue;
+            }
+
+            $updateItemId = (int) ($parsedSql['id'] ?? 0);
+            $updateLessonId = (int) ($parsedSql['lesson_id'] ?? 0);
+            $nextTextFrom = trim((string) ($parsedSql['text_from'] ?? ''));
+            $nextTextTo = trim((string) ($parsedSql['text_to'] ?? ''));
+            $nextIpa = trim((string) ($parsedSql['ipa'] ?? ''));
+
+            if (!$allowedItemIds->contains($updateItemId)) {
+                $attemptErrors[] = 'OpenAI returned unsafe item ID.';
+                continue;
+            }
+
+            $updateRow = $duplicateMap->get($updateItemId);
+            if (!$updateRow) {
+                $attemptErrors[] = 'Unable to map update item to lesson.';
+                continue;
+            }
+
+            if ($updateLessonId !== (int) ($updateRow['lesson_id'] ?? 0)) {
+                $attemptErrors[] = 'SQL lesson_id does not match selected duplicate item.';
+                continue;
+            }
+
+            if ($nextTextFrom === '' && $nextTextTo === '') {
+                $attemptErrors[] = 'OpenAI returned empty text_from and text_to.';
+                continue;
+            }
+
+            $targetTypeNorm = $this->normalizeV2ItemType((string) ($preview['target']['type_norm'] ?? ($updateRow['type'] ?? '')));
+            $originalTextFrom = trim((string) ($updateRow['text_from'] ?? ''));
+            $originalTextTo = trim((string) ($updateRow['text_to'] ?? ''));
+            $originalNormFrom = $this->normalizeV2DuplicateText($originalTextFrom);
+            $originalNormTo = $this->normalizeV2DuplicateText($originalTextTo);
+            $nextNormFrom = $this->normalizeV2DuplicateText($nextTextFrom);
+            $nextNormTo = $this->normalizeV2DuplicateText($nextTextTo);
+
+            if ($nextNormFrom === $originalNormFrom && $nextNormTo === $originalNormTo) {
+                $attemptErrors[] = 'OpenAI returned same text_from/text_to. No replacement was generated.';
+                continue;
+            }
+
+            if ($nextNormFrom === $originalNormFrom || $nextNormTo === $originalNormTo) {
+                $attemptErrors[] = 'Replacement must change both text_from and text_to.';
+                continue;
+            }
+
+            $updateLesson = collect($preview['lessons'] ?? [])
+                ->first(function ($lesson) use ($updateLessonId) {
+                    return (int) ($lesson['id'] ?? 0) === $updateLessonId;
                 });
 
-            if ($duplicateInsideLesson) {
-                throw new \RuntimeException('OpenAI proposed another duplicate already existing in target lesson.');
+            if (is_array($updateLesson)) {
+                $duplicateInsideLesson = collect($updateLesson['items'] ?? [])
+                    ->contains(function ($item) use ($updateItemId, $targetTypeNorm, $nextNormFrom, $nextNormTo) {
+                        return (int) ($item['id'] ?? 0) !== $updateItemId
+                            && $this->normalizeV2ItemType((string) ($item['type'] ?? '')) === $targetTypeNorm
+                            && $this->normalizeV2DuplicateText((string) ($item['text_from'] ?? '')) === $nextNormFrom
+                            && $this->normalizeV2DuplicateText((string) ($item['text_to'] ?? '')) === $nextNormTo;
+                    });
+
+                if ($duplicateInsideLesson) {
+                    $attemptErrors[] = 'OpenAI proposed another duplicate already existing in target lesson.';
+                    continue;
+                }
             }
+
+            $final = [
+                'update_item_id' => $updateItemId,
+                'update_lesson_id' => $updateLessonId,
+                'next_text_from' => $nextTextFrom,
+                'next_text_to' => $nextTextTo,
+                'next_ipa' => $nextIpa,
+                'sql' => $sqlCandidate,
+            ];
+            break;
         }
 
-        $sql = sprintf(
-            "UPDATE `flashcard_items` SET `text_from` = %s, `text_to` = %s, `ipa` = %s, `updated_at` = NOW() WHERE `id` = %d AND `lesson_id` = %d LIMIT 1;",
-            $this->sqlQuoteString($nextTextFrom),
-            $this->sqlQuoteString($nextTextTo),
-            $this->sqlQuoteString($nextIpa),
-            $updateItemId,
-            $updateLessonId
-        );
+        if ($final === null) {
+            $lastError = $attemptErrors !== [] ? end($attemptErrors) : 'Unknown model validation error.';
+            throw new \RuntimeException('Unable to generate valid replacement after ' . $maxAttempts . ' attempts. Last error: ' . $lastError);
+        }
+
+        $updateItemId = (int) $final['update_item_id'];
+        $updateLessonId = (int) $final['update_lesson_id'];
+        $nextTextFrom = (string) $final['next_text_from'];
+        $nextTextTo = (string) $final['next_text_to'];
+        $nextIpa = (string) $final['next_ipa'];
+        $sql = (string) $final['sql'];
 
         return [
             'model' => $model,
-            'keep_item_id' => $keepItemId,
             'update_item_id' => $updateItemId,
             'update_lesson_id' => $updateLessonId,
             'updated_fields' => [
@@ -553,7 +845,64 @@ PROMPT;
                 'ipa' => $nextIpa,
             ],
             'sql' => $sql,
-            'raw_model_response' => $decoded,
+            'raw_model_response' => [
+                'sql' => $sql,
+            ],
+        ];
+    }
+
+    private function extractFirstUpdateSql(string $text): ?string
+    {
+        if (preg_match('/UPDATE\s+`?flashcard_items`?.+?;/is', $text, $match) === 1) {
+            return trim((string) $match[0]);
+        }
+
+        try {
+            $decoded = $this->decodeJsonObjectFromText($text);
+            $sql = trim((string) ($decoded['sql'] ?? ''));
+            if ($sql !== '' && preg_match('/^UPDATE\s+`?flashcard_items`?/i', $sql) === 1) {
+                return $sql;
+            }
+        } catch (\Throwable $e) {
+            // Ignore non-JSON responses; SQL may still be absent.
+        }
+
+        return null;
+    }
+
+    private function parseFlashcardUpdateSql(string $sql): ?array
+    {
+        $cleanSql = trim($sql);
+        if (preg_match('/^UPDATE\s+`?flashcard_items`?/i', $cleanSql) !== 1) {
+            return null;
+        }
+
+        if (preg_match('/\bWHERE\b.+`?id`?\s*=\s*(\d+).+`?lesson_id`?\s*=\s*(\d+)/is', $cleanSql, $idMatches) !== 1) {
+            return null;
+        }
+
+        if (preg_match('/`?text_from`?\s*=\s*\'((?:\'\'|[^\'])*)\'/i', $cleanSql, $fromMatches) !== 1) {
+            return null;
+        }
+
+        if (preg_match('/`?text_to`?\s*=\s*\'((?:\'\'|[^\'])*)\'/i', $cleanSql, $toMatches) !== 1) {
+            return null;
+        }
+
+        if (preg_match('/`?ipa`?\s*=\s*\'((?:\'\'|[^\'])*)\'/i', $cleanSql, $ipaMatches) !== 1) {
+            return null;
+        }
+
+        if (preg_match('/\bLIMIT\s+1\b/i', $cleanSql) !== 1) {
+            return null;
+        }
+
+        return [
+            'text_from' => str_replace("''", "'", (string) ($fromMatches[1] ?? '')),
+            'text_to' => str_replace("''", "'", (string) ($toMatches[1] ?? '')),
+            'ipa' => str_replace("''", "'", (string) ($ipaMatches[1] ?? '')),
+            'id' => (int) ($idMatches[1] ?? 0),
+            'lesson_id' => (int) ($idMatches[2] ?? 0),
         ];
     }
 
@@ -1634,6 +1983,65 @@ PROMPT;
     private function toLikePattern(string $value): string
     {
         return '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value) . '%';
+    }
+
+    private function resolveFlashcardAttemptUserIds(string $search): ?Collection
+    {
+        if ($search === '') {
+            return null;
+        }
+
+        $userIds = collect();
+        if (ctype_digit($search)) {
+            $userIds->push((int) $search);
+        }
+
+        $like = $this->toLikePattern($search);
+        $matchedUsers = DB::connection('mysql')
+            ->table('users')
+            ->select('id')
+            ->where(function ($query) use ($like) {
+                $query->where('username', 'like', $like)
+                    ->orWhere('name', 'like', $like);
+            })
+            ->limit(200)
+            ->get()
+            ->pluck('id')
+            ->map(function ($id) {
+                return (int) $id;
+            });
+
+        return $userIds
+            ->concat($matchedUsers)
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values();
+    }
+
+    private function getUsersByIds(Collection $userIds): Collection
+    {
+        $ids = $userIds
+            ->map(function ($id) {
+                return (int) $id;
+            })
+            ->filter(function ($id) {
+                return $id > 0;
+            })
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return DB::connection('mysql')
+            ->table('users')
+            ->select('id', 'username', 'name')
+            ->whereIn('id', $ids->all())
+            ->get()
+            ->keyBy('id');
     }
 
     private function decodeJsonObjectFromText(string $value): array

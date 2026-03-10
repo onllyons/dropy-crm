@@ -13,21 +13,58 @@
         @if (!empty($error))
             <pre>{{ $error }}</pre>
         @elseif ($module)
-            <div>
-                <a href="{{ route('flash-cards.v2.module', ['moduleId' => $module->id]) }}">Back to category view</a>
-            </div>
-
             <pre>
-Category: {{ $module->title ?? '-' }} (ID {{ $module->id ?? '-' }})
-Slug: {{ $module->slug ?? '-' }}
-
 @foreach (($detail['lessons'] ?? collect()) as $lesson)
-{{ $lesson->title ?? '-' }} (ID {{ $lesson->id ?? '-' }})
-@forelse (($lesson->items ?? collect()) as $item)
-{{ trim((string) ($item->text_from ?? '')) !== '' ? $item->text_from : '-' }} - {{ trim((string) ($item->text_to ?? '')) !== '' ? $item->text_to : '-' }}
-@empty
-No items for this lesson.
-@endforelse
+@php
+    $viewType = strtolower(trim((string) request()->query('type', 'word')));
+    $showAllTypes = $viewType === 'all' || request()->query('all_types') === '1';
+    $isWordsLesson = strtolower(trim((string) ($lesson->lesson_type ?? ''))) === 'words';
+    if (!$isWordsLesson && !$showAllTypes) {
+        continue;
+    }
+
+    $lessonItems = collect($lesson->items ?? collect());
+    if (!$showAllTypes) {
+        $lessonItems = $lessonItems->filter(function ($item) {
+            return strtolower(trim((string) ($item->type ?? ''))) === 'word';
+        })->values();
+    }
+
+    if ($lessonItems->isEmpty()) {
+        continue;
+    }
+
+    $lessonJson = [
+        'lesson_id' => $lesson->id ?? null,
+        'title' => $lesson->title ?? null,
+        'level' => $lesson->level ?? null,
+        'type' => $lesson->lesson_type ?? null,
+        'words_total' => (int) $lessonItems->count(),
+        'items' => $lessonItems->map(function ($item) {
+            $row = [
+                'id' => $item->id ?? null,
+                'text_from' => $item->text_from ?? null,
+                'text_to' => $item->text_to ?? null,
+            ];
+
+            return $row;
+        })->values()->all(),
+    ];
+
+    if ($isWordsLesson) {
+        $lessonJson['items'] = $lessonItems->map(function ($item) {
+            $row = [
+                'id' => $item->id ?? null,
+                'text_from' => $item->text_from ?? null,
+                'text_to' => $item->text_to ?? null,
+                'ipa' => $item->ipa ?? null,
+            ];
+
+            return $row;
+        })->values()->all();
+    }
+@endphp
+{{ json_encode($lessonJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}
 
 @endforeach
             </pre>

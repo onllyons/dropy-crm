@@ -60,6 +60,12 @@
                             $gameActionCooldownError = $gameActionCooldownError ?? null;
                             $cooldownFilter = $cooldownFilter ?? 'all';
                             $cooldownFilterOptions = $cooldownFilterOptions ?? ['all' => 'All', 'active' => 'Only active'];
+                            $flashCardsProgress = $flashCardsProgress ?? [
+                                'summary' => [],
+                                'moduleProgress' => collect(),
+                                'recentAttempts' => collect(),
+                                'error' => null,
+                            ];
                             $toEuropeanDateTime = function ($value) {
                                 if ($value === null || $value === '') {
                                     return '-';
@@ -70,6 +76,22 @@
                                 }
                                 $ts = strtotime((string) $value);
                                 return $ts ? date('d.m.Y H:i:s', $ts) : (string) $value;
+                            };
+                            $formatDuration = function ($seconds) {
+                                $total = max(0, (int) $seconds);
+                                $hours = intdiv($total, 3600);
+                                $minutes = intdiv($total % 3600, 60);
+                                $rest = $total % 60;
+
+                                if ($hours > 0) {
+                                    return sprintf('%dh %02dm', $hours, $minutes);
+                                }
+
+                                if ($minutes > 0) {
+                                    return sprintf('%dm %02ds', $minutes, $rest);
+                                }
+
+                                return sprintf('%ds', $rest);
                             };
                         @endphp
                         <div class="mt-6 grid gap-6 lg:grid-cols-[260px,1fr]">
@@ -171,7 +193,165 @@
                             <div class="mt-3 flex flex-wrap gap-2">
                                 <a class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-white" href="{{ route('users.behavior', ['id' => $user->id]) }}">website/app views</a>
                                 <a class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-white" href="{{ route('users.course-history', ['id' => $user->id]) }}">course history</a>
+                                <a class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-white" href="{{ route('flash-cards.v2.progress', ['q' => $user->id]) }}">flash-cards v2 progress</a>
                                 <a class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-white">Nav 3</a>
+                            </div>
+                        </div>
+
+                        @php
+                            $flashSummary = $flashCardsProgress['summary'] ?? [];
+                            $flashModuleProgress = $flashCardsProgress['moduleProgress'] ?? collect();
+                            $flashRecentAttempts = $flashCardsProgress['recentAttempts'] ?? collect();
+                            $flashCardsError = $flashCardsProgress['error'] ?? null;
+                        @endphp
+                        <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <div class="text-sm font-semibold text-slate-700">Flash-cards V2 progress</div>
+                                    <div class="mt-2 text-xs text-slate-500">Read-only overview from flashcard_lesson_attempts for user_id = {{ $user->id }}</div>
+                                </div>
+                                <a class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:bg-white" href="{{ route('flash-cards.v2.progress', ['q' => $user->id]) }}">
+                                    Open full progress page
+                                </a>
+                            </div>
+
+                            @if ($flashCardsError)
+                                <div class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                    {{ $flashCardsError }}
+                                </div>
+                            @endif
+
+                            <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Completed lessons</div>
+                                    <div class="mt-2 text-xl font-semibold text-slate-800">{{ number_format((int) ($flashSummary['completed_lessons'] ?? 0)) }}</div>
+                                    <div class="mt-1 text-xs text-slate-500">from {{ number_format((int) ($flashSummary['catalog_lessons_total'] ?? 0)) }}</div>
+                                </div>
+                                <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-sky-700">Progress</div>
+                                    <div class="mt-2 text-xl font-semibold text-sky-700">{{ number_format((float) ($flashSummary['progress_percent'] ?? 0), 1) }}%</div>
+                                    <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/70">
+                                        <div class="h-full rounded-full bg-sky-500" style="width: {{ max(0, min(100, (float) ($flashSummary['progress_percent'] ?? 0))) }}%;"></div>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Attempts</div>
+                                    <div class="mt-2 text-xl font-semibold text-emerald-700">{{ number_format((int) ($flashSummary['attempts_total'] ?? 0)) }}</div>
+                                    <div class="mt-1 text-xs text-emerald-700">Completed: {{ number_format((int) ($flashSummary['completed_attempts'] ?? 0)) }}</div>
+                                </div>
+                                <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-amber-700">In progress</div>
+                                    <div class="mt-2 text-xl font-semibold text-amber-700">{{ number_format((int) ($flashSummary['in_progress_attempts'] ?? 0)) }}</div>
+                                    <div class="mt-1 text-xs text-amber-700">Started lessons: {{ number_format((int) ($flashSummary['started_lessons'] ?? 0)) }}</div>
+                                </div>
+                                <div class="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-violet-700">Accuracy</div>
+                                    <div class="mt-2 text-xl font-semibold text-violet-700">
+                                        @if (($flashSummary['accuracy_percent'] ?? null) !== null)
+                                            {{ number_format((float) $flashSummary['accuracy_percent'], 1) }}%
+                                        @else
+                                            -
+                                        @endif
+                                    </div>
+                                    <div class="mt-1 text-xs text-violet-700">
+                                        {{ number_format((int) ($flashSummary['answers_correct'] ?? 0)) }}/{{ number_format((int) ($flashSummary['questions_total'] ?? 0)) }}
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Tracked time</div>
+                                    <div class="mt-2 text-xl font-semibold text-slate-800">{{ $formatDuration($flashSummary['total_time_seconds'] ?? 0) }}</div>
+                                    <div class="mt-1 text-xs text-slate-500">{{ trim((string) ($flashSummary['last_activity_at'] ?? '')) !== '' ? $flashSummary['last_activity_at'] : 'No activity yet' }}</div>
+                                </div>
+                            </div>
+
+                            <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,.95fr)]">
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div class="text-sm font-semibold text-slate-700">Progress by module</div>
+                                    <div class="mt-3 overflow-x-auto">
+                                        <table class="min-w-full text-sm">
+                                            <thead>
+                                                <tr class="text-left text-slate-500">
+                                                    <th class="pb-2">Module</th>
+                                                    <th class="pb-2">Completed</th>
+                                                    <th class="pb-2">Attempts</th>
+                                                    <th class="pb-2">Time</th>
+                                                    <th class="pb-2">Progress</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-slate-100">
+                                                @forelse ($flashModuleProgress as $row)
+                                                    <tr>
+                                                        <td class="py-2 text-slate-700">
+                                                            <a href="{{ route('flash-cards.v2.module', ['moduleId' => (int) ($row->module_id ?? 0)]) }}" class="hover:text-sky-700 hover:underline">
+                                                                {{ trim((string) ($row->module_title ?? '')) !== '' ? $row->module_title : ('Module #' . (int) ($row->module_id ?? 0)) }}
+                                                            </a>
+                                                        </td>
+                                                        <td class="py-2 text-slate-700">{{ (int) ($row->completed_lessons ?? 0) }}/{{ (int) ($row->lessons_total ?? 0) }}</td>
+                                                        <td class="py-2 text-slate-700">{{ number_format((int) ($row->attempts_total ?? 0)) }}</td>
+                                                        <td class="py-2 text-slate-700">{{ $formatDuration($row->total_time_seconds ?? 0) }}</td>
+                                                        <td class="py-2 text-slate-700">{{ number_format((float) ($row->progress_percent ?? 0), 1) }}%</td>
+                                                    </tr>
+                                                @empty
+                                                    <tr>
+                                                        <td class="py-3 text-slate-500" colspan="5">No flash-cards progress yet.</td>
+                                                    </tr>
+                                                @endforelse
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div class="text-sm font-semibold text-slate-700">Latest attempts</div>
+                                    <div class="mt-3 space-y-3">
+                                        @forelse ($flashRecentAttempts as $row)
+                                            @php
+                                                $attemptStatusClass = (string) ($row->status ?? '') === 'completed'
+                                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                    : ((string) ($row->status ?? '') === 'in_progress'
+                                                        ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                                        : 'border-slate-200 bg-white text-slate-700');
+                                            @endphp
+                                            <article class="rounded-xl border border-slate-200 bg-white p-3">
+                                                <div class="flex flex-wrap items-start justify-between gap-2">
+                                                    <div>
+                                                        <a href="{{ route('flash-cards.v2.lesson', ['lessonId' => (int) ($row->lesson_id ?? 0)]) }}" class="font-semibold text-slate-800 hover:text-sky-700 hover:underline">
+                                                            {{ trim((string) ($row->lesson_title ?? '')) !== '' ? $row->lesson_title : ('Lesson #' . (int) ($row->lesson_id ?? 0)) }}
+                                                        </a>
+                                                        <div class="mt-1 text-xs text-slate-500">
+                                                            {{ trim((string) ($row->module_title ?? '')) !== '' ? $row->module_title : '-' }}
+                                                            @if (trim((string) ($row->lesson_level ?? '')) !== '')
+                                                                · {{ $row->lesson_level }}
+                                                            @endif
+                                                            @if (trim((string) ($row->lesson_type ?? '')) !== '')
+                                                                · {{ $row->lesson_type }}
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                    <span class="rounded-full border px-2 py-0.5 text-xs font-semibold {{ $attemptStatusClass }}">
+                                                        {{ trim((string) ($row->status ?? '')) !== '' ? $row->status : 'unknown' }}
+                                                    </span>
+                                                </div>
+                                                <div class="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                                                    <div>Attempt #{{ (int) ($row->attempt_number ?? 0) }} · time {{ $formatDuration($row->total_time_seconds ?? 0) }}</div>
+                                                    <div>
+                                                        Quiz:
+                                                        {{ number_format((int) ($row->answers_correct ?? 0)) }}/{{ number_format((int) ($row->questions_total ?? 0)) }}
+                                                        @if (($row->accuracy_percent ?? null) !== null)
+                                                            ({{ number_format((float) $row->accuracy_percent, 1) }}%)
+                                                        @endif
+                                                    </div>
+                                                    <div>Started: {{ trim((string) ($row->started_at ?? '')) !== '' ? $row->started_at : '-' }}</div>
+                                                    <div>Completed: {{ trim((string) ($row->completed_at ?? '')) !== '' ? $row->completed_at : 'Not completed' }}</div>
+                                                </div>
+                                            </article>
+                                        @empty
+                                            <div class="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                                                No attempts for this user.
+                                            </div>
+                                        @endforelse
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

@@ -402,6 +402,138 @@ class FlashCardsService
         ];
     }
 
+    public function getV2ProgressForUser(int $userId): array
+    {
+        $summary = [
+            'attempts_total' => 0,
+            'completed_attempts' => 0,
+            'in_progress_attempts' => 0,
+            'completed_lessons' => 0,
+            'started_lessons' => 0,
+            'catalog_lessons_total' => (int) DB::connection('tenant')->table('flashcard_lessons')->count(),
+            'progress_percent' => 0.0,
+            'total_time_seconds' => 0,
+            'questions_total' => 0,
+            'answers_correct' => 0,
+            'answers_wrong' => 0,
+            'accuracy_percent' => null,
+            'last_activity_at' => null,
+        ];
+
+        $baseQuery = DB::connection('tenant')
+            ->table('flashcard_lesson_attempts as a')
+            ->where('a.user_id', $userId);
+
+        $summary['attempts_total'] = (int) (clone $baseQuery)->count();
+        $summary['completed_attempts'] = (int) (clone $baseQuery)->where('a.status', 'completed')->count();
+        $summary['in_progress_attempts'] = (int) (clone $baseQuery)->where('a.status', 'in_progress')->count();
+        $summary['completed_lessons'] = (int) (clone $baseQuery)
+            ->where('a.status', 'completed')
+            ->distinct()
+            ->count('a.lesson_id');
+        $summary['started_lessons'] = (int) (clone $baseQuery)
+            ->distinct()
+            ->count('a.lesson_id');
+        $summary['total_time_seconds'] = (int) ((clone $baseQuery)
+            ->selectRaw('COALESCE(SUM(COALESCE(a.lesson_time_seconds, 0) + COALESCE(a.quiz_time_seconds, 0)), 0) as total_time_seconds')
+            ->value('total_time_seconds') ?? 0);
+        $summary['questions_total'] = (int) ((clone $baseQuery)
+            ->selectRaw('COALESCE(SUM(COALESCE(a.questions_total, 0)), 0) as questions_total')
+            ->value('questions_total') ?? 0);
+        $summary['answers_correct'] = (int) ((clone $baseQuery)
+            ->selectRaw('COALESCE(SUM(COALESCE(a.answers_correct, 0)), 0) as answers_correct')
+            ->value('answers_correct') ?? 0);
+        $summary['answers_wrong'] = (int) ((clone $baseQuery)
+            ->selectRaw('COALESCE(SUM(COALESCE(a.answers_wrong, 0)), 0) as answers_wrong')
+            ->value('answers_wrong') ?? 0);
+        $summary['last_activity_at'] = (clone $baseQuery)
+            ->selectRaw('MAX(COALESCE(a.updated_at, a.completed_at, a.started_at, a.created_at)) as last_activity_at')
+            ->value('last_activity_at');
+        $summary['progress_percent'] = $summary['catalog_lessons_total'] > 0
+            ? round(($summary['completed_lessons'] / $summary['catalog_lessons_total']) * 100, 1)
+            : 0.0;
+        $summary['accuracy_percent'] = $summary['questions_total'] > 0
+            ? round(($summary['answers_correct'] / $summary['questions_total']) * 100, 1)
+            : null;
+
+        $moduleProgress = DB::connection('tenant')
+            ->table('flashcard_modules as m')
+            ->join('flashcard_lessons as l', 'l.module_id', '=', 'm.id')
+            ->leftJoin('flashcard_lesson_attempts as a', function ($join) use ($userId) {
+                $join->on('a.lesson_id', '=', 'l.id')
+                    ->where('a.user_id', '=', $userId);
+            })
+            ->select('m.id as module_id', 'm.title as module_title')
+            ->selectRaw('COUNT(DISTINCT l.id) as lessons_total')
+            ->selectRaw("COUNT(DISTINCT CASE WHEN a.status = 'completed' THEN l.id END) as completed_lessons")
+            ->selectRaw('COUNT(a.id) as attempts_total')
+            ->selectRaw('COALESCE(SUM(COALESCE(a.lesson_time_seconds, 0) + COALESCE(a.quiz_time_seconds, 0)), 0) as total_time_seconds')
+            ->groupBy('m.id', 'm.title')
+            ->orderByDesc('completed_lessons')
+            ->orderByDesc('attempts_total')
+            ->orderBy('m.id')
+            ->get()
+            ->map(function ($row) {
+                $lessonsTotal = (int) ($row->lessons_total ?? 0);
+                $completedLessons = (int) ($row->completed_lessons ?? 0);
+                $row->progress_percent = $lessonsTotal > 0
+                    ? round(($completedLessons / $lessonsTotal) * 100, 1)
+                    : 0.0;
+
+                return $row;
+            })
+            ->filter(function ($row) {
+                return (int) ($row->attempts_total ?? 0) > 0;
+            })
+            ->values();
+
+        $recentAttempts = DB::connection('tenant')
+            ->table('flashcard_lesson_attempts as a')
+            ->leftJoin('flashcard_lessons as l', 'l.id', '=', 'a.lesson_id')
+            ->leftJoin('flashcard_modules as m', 'm.id', '=', 'l.module_id')
+            ->select(
+                'a.id',
+                'a.lesson_id',
+                'a.attempt_number',
+                'a.status',
+                'a.started_at',
+                'a.completed_at',
+                'a.lesson_time_seconds',
+                'a.quiz_time_seconds',
+                'a.questions_total',
+                'a.answers_correct',
+                'a.answers_wrong',
+                'a.created_at',
+                'a.updated_at',
+                'l.title as lesson_title',
+                'l.level as lesson_level',
+                'l.lesson_type',
+                'm.id as module_id',
+                'm.title as module_title'
+            )
+            ->where('a.user_id', $userId)
+            ->orderByDesc('a.id')
+            ->limit(10)
+            ->get()
+            ->map(function ($row) {
+                $questionsTotal = (int) ($row->questions_total ?? 0);
+                $answersCorrect = (int) ($row->answers_correct ?? 0);
+                $row->accuracy_percent = $questionsTotal > 0
+                    ? round(($answersCorrect / $questionsTotal) * 100, 1)
+                    : null;
+                $row->total_time_seconds = (int) ($row->lesson_time_seconds ?? 0) + (int) ($row->quiz_time_seconds ?? 0);
+
+                return $row;
+            });
+
+        return [
+            'summary' => $summary,
+            'moduleProgress' => $moduleProgress,
+            'recentAttempts' => $recentAttempts,
+            'error' => null,
+        ];
+    }
+
     public function getV2LessonDetails(int $lessonId): array
     {
         $lesson = DB::connection('tenant')

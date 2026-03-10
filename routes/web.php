@@ -9,11 +9,11 @@ use App\Http\Controllers\FlashCardsController;
 use App\Http\Controllers\LessonController;
 use App\Http\Controllers\MessengerController;
 use App\Http\Controllers\MessageGamesController;
+use App\Http\Controllers\UserDetailController;
 use App\Http\Controllers\UserBehaviorController;
 use App\Http\Controllers\UserCourseHistoryController;
 use App\Http\Controllers\UserSubscriptionController;
 use App\Http\Controllers\VisitorsAnalyticsGroupedUrlController;
-use App\Services\UserCooldownService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -1189,92 +1189,8 @@ Route::middleware('auth')->group(function () {
         ->where('id', '[0-9]+')
         ->name('users.subscription.grant-pro');
 
-    Route::get('/users/{id}', function (Request $request, int $id) {
-        $error = null;
-        $user = null;
-        $subscriptionRows = collect();
-        $subscriptionError = null;
-        $subscriptionGiftRows = collect();
-        $subscriptionGiftError = null;
-        $userActionCooldownRows = collect();
-        $userActionCooldownError = null;
-        $gameActionCooldownRows = collect();
-        $gameActionCooldownError = null;
-        $cooldownFilterOptions = [
-            'all' => 'All',
-            'active' => 'Only active',
-        ];
-        $cooldownFilter = strtolower(trim((string) $request->query('cooldown_filter', 'all')));
-        if (!array_key_exists($cooldownFilter, $cooldownFilterOptions)) {
-            $cooldownFilter = 'all';
-        }
-
-        try {
-            $user = \DB::table('users')
-                ->select('id', 'name', 'surname', 'username', 'email', 'level', 'image', 'bio', 'verified', 'byGoogle', 'appleUser', 'profileAccess', 'time')
-                ->selectRaw('FROM_UNIXTIME(`time`) as time_label')
-                ->where('id', $id)
-                ->first();
-        } catch (\Throwable $e) {
-            $error = $e->getMessage();
-        }
-
-        if ($user) {
-            try {
-                $subscriptionRows = \DB::connection('mysql')
-                    ->table('subscriptionManagement')
-                    ->select('id', 'user_id', 'subscribe', 'subscribe_start', 'subscribe_expire')
-                    ->where('user_id', $id)
-                    ->orderByDesc('id')
-                    ->get();
-            } catch (\Throwable $e) {
-                $subscriptionError = $e->getMessage();
-            }
-
-            try {
-                $subscriptionGiftRows = \DB::connection('mysql')
-                    ->table('subscriptionManagementGift')
-                    ->select('id', 'user_id', 'subscribe_start', 'subscribe_expire')
-                    ->where('user_id', $id)
-                    ->orderByDesc('id')
-                    ->get();
-            } catch (\Throwable $e) {
-                $subscriptionGiftError = $e->getMessage();
-            }
-
-            try {
-                $cooldownResult = app(UserCooldownService::class)->getRowsForUser($id, $cooldownFilter);
-                $cooldownFilter = $cooldownResult['filter'] ?? $cooldownFilter;
-                $cooldownFilterOptions = $cooldownResult['filter_options'] ?? $cooldownFilterOptions;
-                $userActionCooldownRows = $cooldownResult['user_action_rows'] ?? collect();
-                $userActionCooldownError = $cooldownResult['user_action_error'] ?? null;
-                $gameActionCooldownRows = $cooldownResult['game_action_rows'] ?? collect();
-                $gameActionCooldownError = $cooldownResult['game_action_error'] ?? null;
-            } catch (\Throwable $e) {
-                $userActionCooldownError = $e->getMessage();
-                $gameActionCooldownError = $e->getMessage();
-            }
-        }
-
-        if (!$user && !$error) {
-            abort(404);
-        }
-
-        return view('user-detail', [
-            'user' => $user,
-            'subscriptionRows' => $subscriptionRows,
-            'subscriptionError' => $subscriptionError,
-            'subscriptionGiftRows' => $subscriptionGiftRows,
-            'subscriptionGiftError' => $subscriptionGiftError,
-            'userActionCooldownRows' => $userActionCooldownRows,
-            'userActionCooldownError' => $userActionCooldownError,
-            'gameActionCooldownRows' => $gameActionCooldownRows,
-            'gameActionCooldownError' => $gameActionCooldownError,
-            'cooldownFilter' => $cooldownFilter,
-            'cooldownFilterOptions' => $cooldownFilterOptions,
-            'error' => $error,
-        ]);
-    })->where('id', '[0-9]+');
+    Route::get('/users/{id}', [UserDetailController::class, 'show'])
+        ->where('id', '[0-9]+');
 
     Route::get('/course', [CourseController::class, 'index']);
     Route::get('/course-integrity', [CourseIntegrityController::class, 'index'])

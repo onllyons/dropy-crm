@@ -164,6 +164,7 @@
                                     <div class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Attempts</div>
                                     <div class="mt-2 text-xl font-semibold text-emerald-700">{{ number_format((int) ($focusedSummary['attempts_total'] ?? 0)) }}</div>
                                     <div class="mt-1 text-xs text-emerald-700">Completed: {{ number_format((int) ($focusedSummary['completed_attempts'] ?? 0)) }}</div>
+                                    <div class="mt-1 text-xs text-amber-700">In progress: {{ number_format((int) ($focusedSummary['in_progress_attempts'] ?? 0)) }}</div>
                                 </div>
                                 <div class="rounded-2xl border border-violet-200 bg-violet-50 p-4">
                                     <div class="text-xs font-semibold uppercase tracking-wide text-violet-700">Accuracy</div>
@@ -223,85 +224,87 @@
                         </section>
                     @endif
 
-                    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <div class="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                                <h2 class="text-lg font-semibold text-slate-900">Users Overview</h2>
-                                <p class="mt-1 text-sm text-slate-600">Sortat după lecții finalizate și activitate recentă.</p>
+                    @if (!is_array($focusedUser) || !is_array($focusedUserProgress))
+                        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h2 class="text-lg font-semibold text-slate-900">Users Overview</h2>
+                                    <p class="mt-1 text-sm text-slate-600">Sortat după lecții finalizate și activitate recentă.</p>
+                                </div>
                             </div>
-                        </div>
 
-                        <div class="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
-                            <table class="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                                    <tr>
-                                        <th class="px-4 py-3 text-left">User</th>
-                                        <th class="px-4 py-3 text-left">Completed</th>
-                                        <th class="px-4 py-3 text-left">Progress</th>
-                                        <th class="px-4 py-3 text-left">Attempts</th>
-                                        <th class="px-4 py-3 text-left">Accuracy</th>
-                                        <th class="px-4 py-3 text-left">Time</th>
-                                        <th class="px-4 py-3 text-left">Last activity</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100 bg-white">
-                                    @forelse ($userRows as $row)
-                                        <tr class="align-top">
-                                            <td class="px-4 py-3">
-                                                <div class="font-semibold text-slate-800">
-                                                    <a href="{{ url('/users/' . (int) ($row->user_id ?? 0)) }}" class="hover:text-sky-700 hover:underline">
-                                                        {{ trim((string) ($row->user_label ?? '')) !== '' ? $row->user_label : ('User #' . (int) ($row->user_id ?? 0)) }}
-                                                    </a>
-                                                </div>
-                                                <div class="mt-1 text-xs text-slate-500">
-                                                    ID: {{ (int) ($row->user_id ?? 0) }}
-                                                    @if (trim((string) ($row->user_name ?? '')) !== '')
-                                                        · {{ $row->user_name }}
-                                                    @endif
-                                                </div>
-                                            </td>
-                                            <td class="px-4 py-3">
-                                                <div class="font-semibold text-slate-800">{{ number_format((int) ($row->completed_lessons ?? 0)) }}</div>
-                                                <div class="mt-1 text-xs text-slate-500">from {{ number_format((int) ($summary['catalog_lessons_total'] ?? 0)) }}</div>
-                                            </td>
-                                            <td class="px-4 py-3">
-                                                <div class="font-semibold text-slate-800">{{ number_format((float) ($row->progress_percent ?? 0), 1) }}%</div>
-                                                <div class="mt-2 h-2 w-32 overflow-hidden rounded-full bg-slate-100">
-                                                    <div class="h-full rounded-full bg-sky-500" style="width: {{ max(0, min(100, (float) ($row->progress_percent ?? 0))) }}%;"></div>
-                                                </div>
-                                            </td>
-                                            <td class="px-4 py-3 text-slate-700">
-                                                <div>Total: {{ number_format((int) ($row->attempts_total ?? 0)) }}</div>
-                                                <div class="mt-1 text-xs text-emerald-700">Completed: {{ number_format((int) ($row->completed_attempts ?? 0)) }}</div>
-                                                <div class="mt-1 text-xs text-amber-700">In progress: {{ number_format((int) ($row->in_progress_attempts ?? 0)) }}</div>
-                                            </td>
-                                            <td class="px-4 py-3 text-slate-700">
-                                                @if ($row->accuracy_percent !== null)
-                                                    {{ number_format((float) $row->accuracy_percent, 1) }}%
-                                                @else
-                                                    <span class="text-slate-400">No quiz yet</span>
-                                                @endif
-                                            </td>
-                                            <td class="px-4 py-3 text-slate-700">{{ $formatDuration($row->total_time_seconds ?? 0) }}</td>
-                                            <td class="px-4 py-3 text-slate-700">
-                                                {{ trim((string) ($row->last_activity_at ?? '')) !== '' ? $row->last_activity_at : '-' }}
-                                            </td>
-                                        </tr>
-                                    @empty
+                            <div class="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
+                                <table class="min-w-full divide-y divide-slate-200 text-sm">
+                                    <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                                         <tr>
-                                            <td colspan="7" class="px-4 py-8 text-center text-sm text-slate-500">No user progress records.</td>
+                                            <th class="px-4 py-3 text-left">User</th>
+                                            <th class="px-4 py-3 text-left">Completed</th>
+                                            <th class="px-4 py-3 text-left">Progress</th>
+                                            <th class="px-4 py-3 text-left">Attempts</th>
+                                            <th class="px-4 py-3 text-left">Accuracy</th>
+                                            <th class="px-4 py-3 text-left">Time</th>
+                                            <th class="px-4 py-3 text-left">Last activity</th>
                                         </tr>
-                                    @endforelse
-                                </tbody>
-                            </table>
-                        </div>
-
-                        @if (method_exists($users, 'links'))
-                            <div class="mt-4">
-                                {{ $users->links() }}
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 bg-white">
+                                        @forelse ($userRows as $row)
+                                            <tr class="align-top">
+                                                <td class="px-4 py-3">
+                                                    <div class="font-semibold text-slate-800">
+                                                        <a href="{{ url('/users/' . (int) ($row->user_id ?? 0)) }}" class="hover:text-sky-700 hover:underline">
+                                                            {{ trim((string) ($row->user_label ?? '')) !== '' ? $row->user_label : ('User #' . (int) ($row->user_id ?? 0)) }}
+                                                        </a>
+                                                    </div>
+                                                    <div class="mt-1 text-xs text-slate-500">
+                                                        ID: {{ (int) ($row->user_id ?? 0) }}
+                                                        @if (trim((string) ($row->user_name ?? '')) !== '')
+                                                            · {{ $row->user_name }}
+                                                        @endif
+                                                    </div>
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    <div class="font-semibold text-slate-800">{{ number_format((int) ($row->completed_lessons ?? 0)) }}</div>
+                                                    <div class="mt-1 text-xs text-slate-500">from {{ number_format((int) ($summary['catalog_lessons_total'] ?? 0)) }}</div>
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    <div class="font-semibold text-slate-800">{{ number_format((float) ($row->progress_percent ?? 0), 1) }}%</div>
+                                                    <div class="mt-2 h-2 w-32 overflow-hidden rounded-full bg-slate-100">
+                                                        <div class="h-full rounded-full bg-sky-500" style="width: {{ max(0, min(100, (float) ($row->progress_percent ?? 0))) }}%;"></div>
+                                                    </div>
+                                                </td>
+                                                <td class="px-4 py-3 text-slate-700">
+                                                    <div>Total: {{ number_format((int) ($row->attempts_total ?? 0)) }}</div>
+                                                    <div class="mt-1 text-xs text-emerald-700">Completed: {{ number_format((int) ($row->completed_attempts ?? 0)) }}</div>
+                                                    <div class="mt-1 text-xs text-amber-700">In progress: {{ number_format((int) ($row->in_progress_attempts ?? 0)) }}</div>
+                                                </td>
+                                                <td class="px-4 py-3 text-slate-700">
+                                                    @if ($row->accuracy_percent !== null)
+                                                        {{ number_format((float) $row->accuracy_percent, 1) }}%
+                                                    @else
+                                                        <span class="text-slate-400">No quiz yet</span>
+                                                    @endif
+                                                </td>
+                                                <td class="px-4 py-3 text-slate-700">{{ $formatDuration($row->total_time_seconds ?? 0) }}</td>
+                                                <td class="px-4 py-3 text-slate-700">
+                                                    {{ trim((string) ($row->last_activity_at ?? '')) !== '' ? $row->last_activity_at : '-' }}
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="7" class="px-4 py-8 text-center text-sm text-slate-500">No user progress records.</td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
                             </div>
-                        @endif
-                    </section>
+
+                            @if (method_exists($users, 'links'))
+                                <div class="mt-4">
+                                    {{ $users->links() }}
+                                </div>
+                            @endif
+                        </section>
+                    @endif
 
                     <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div>

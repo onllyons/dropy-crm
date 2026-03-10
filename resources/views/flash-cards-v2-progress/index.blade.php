@@ -19,6 +19,10 @@
                         $summary = $progress['summary'] ?? [];
                         $users = $progress['users'] ?? collect();
                         $attempts = $progress['attempts'] ?? collect();
+                        $focusedUser = $progress['focusedUser'] ?? null;
+                        $focusedUserProgress = $progress['focusedUserProgress'] ?? null;
+                        $focusedSummary = $focusedUserProgress['summary'] ?? [];
+                        $focusedModuleProgress = $focusedUserProgress['moduleProgress'] ?? collect();
                         $userRows = method_exists($users, 'items') ? $users->items() : $users;
                         $attemptRows = method_exists($attempts, 'items') ? $attempts->items() : $attempts;
                         $formatDuration = function ($seconds) {
@@ -121,6 +125,103 @@
                             <div class="mt-1 text-xs text-violet-700">Catalog lessons: {{ number_format((int) ($summary['catalog_lessons_total'] ?? 0)) }}</div>
                         </div>
                     </section>
+
+                    @if (is_array($focusedUser) && is_array($focusedUserProgress))
+                        <section class="mt-6 rounded-2xl border border-sky-200 bg-white p-5 shadow-sm">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <h2 class="text-lg font-semibold text-slate-900">Focused User Progress</h2>
+                                    <p class="mt-1 text-sm text-slate-600">
+                                        Overview complet pentru
+                                        <a href="{{ url('/users/' . (int) ($focusedUser['id'] ?? 0)) }}" class="font-semibold text-sky-700 hover:underline">
+                                            {{ trim((string) ($focusedUser['label'] ?? '')) !== '' ? $focusedUser['label'] : ('User #' . (int) ($focusedUser['id'] ?? 0)) }}
+                                        </a>
+                                        @if (trim((string) ($focusedUser['name'] ?? '')) !== '')
+                                            <span class="text-slate-400">·</span> {{ $focusedUser['name'] }}
+                                        @endif
+                                    </p>
+                                </div>
+                                <a href="{{ url('/users/' . (int) ($focusedUser['id'] ?? 0)) }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                                    <i class="fa-solid fa-user"></i>
+                                    Open user profile
+                                </a>
+                            </div>
+
+                            <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Completed lessons</div>
+                                    <div class="mt-2 text-xl font-semibold text-slate-800">{{ number_format((int) ($focusedSummary['completed_lessons'] ?? 0)) }}</div>
+                                    <div class="mt-1 text-xs text-slate-500">from {{ number_format((int) ($focusedSummary['catalog_lessons_total'] ?? 0)) }}</div>
+                                </div>
+                                <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-sky-700">Progress</div>
+                                    <div class="mt-2 text-xl font-semibold text-sky-700">{{ number_format((float) ($focusedSummary['progress_percent'] ?? 0), 1) }}%</div>
+                                    <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/70">
+                                        <div class="h-full rounded-full bg-sky-500" style="width: {{ max(0, min(100, (float) ($focusedSummary['progress_percent'] ?? 0))) }}%;"></div>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Attempts</div>
+                                    <div class="mt-2 text-xl font-semibold text-emerald-700">{{ number_format((int) ($focusedSummary['attempts_total'] ?? 0)) }}</div>
+                                    <div class="mt-1 text-xs text-emerald-700">Completed: {{ number_format((int) ($focusedSummary['completed_attempts'] ?? 0)) }}</div>
+                                </div>
+                                <div class="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-violet-700">Accuracy</div>
+                                    <div class="mt-2 text-xl font-semibold text-violet-700">
+                                        @if (($focusedSummary['accuracy_percent'] ?? null) !== null)
+                                            {{ number_format((float) $focusedSummary['accuracy_percent'], 1) }}%
+                                        @else
+                                            -
+                                        @endif
+                                    </div>
+                                    <div class="mt-1 text-xs text-violet-700">
+                                        {{ number_format((int) ($focusedSummary['answers_correct'] ?? 0)) }}/{{ number_format((int) ($focusedSummary['questions_total'] ?? 0)) }}
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Tracked time</div>
+                                    <div class="mt-2 text-xl font-semibold text-slate-800">{{ $formatDuration($focusedSummary['total_time_seconds'] ?? 0) }}</div>
+                                    <div class="mt-1 text-xs text-slate-500">{{ trim((string) ($focusedSummary['last_activity_at'] ?? '')) !== '' ? $focusedSummary['last_activity_at'] : 'No activity yet' }}</div>
+                                </div>
+                            </div>
+
+                            <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                <div class="text-sm font-semibold text-slate-700">Progress by module</div>
+                                <div class="mt-3 overflow-x-auto">
+                                    <table class="min-w-full text-sm">
+                                        <thead>
+                                            <tr class="text-left text-slate-500">
+                                                <th class="pb-2">Module</th>
+                                                <th class="pb-2">Completed</th>
+                                                <th class="pb-2">Attempts</th>
+                                                <th class="pb-2">Time</th>
+                                                <th class="pb-2">Progress</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-100">
+                                            @forelse ($focusedModuleProgress as $row)
+                                                <tr>
+                                                    <td class="py-2 text-slate-700">
+                                                        <a href="{{ route('flash-cards.v2.module', ['moduleId' => (int) ($row->module_id ?? 0)]) }}" class="hover:text-sky-700 hover:underline">
+                                                            {{ trim((string) ($row->module_title ?? '')) !== '' ? $row->module_title : ('Module #' . (int) ($row->module_id ?? 0)) }}
+                                                        </a>
+                                                    </td>
+                                                    <td class="py-2 text-slate-700">{{ (int) ($row->completed_lessons ?? 0) }}/{{ (int) ($row->lessons_total ?? 0) }}</td>
+                                                    <td class="py-2 text-slate-700">{{ number_format((int) ($row->attempts_total ?? 0)) }}</td>
+                                                    <td class="py-2 text-slate-700">{{ $formatDuration($row->total_time_seconds ?? 0) }}</td>
+                                                    <td class="py-2 text-slate-700">{{ number_format((float) ($row->progress_percent ?? 0), 1) }}%</td>
+                                                </tr>
+                                            @empty
+                                                <tr>
+                                                    <td class="py-3 text-slate-500" colspan="5">No progress by module for this user.</td>
+                                                </tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </section>
+                    @endif
 
                     <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div class="flex flex-wrap items-center justify-between gap-3">

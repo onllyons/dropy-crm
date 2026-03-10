@@ -88,6 +88,8 @@ class FlashCardsController extends Controller
             ],
             'users' => collect(),
             'attempts' => collect(),
+            'focusedUser' => null,
+            'focusedUserProgress' => null,
         ];
 
         try {

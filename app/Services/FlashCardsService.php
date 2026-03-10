@@ -391,6 +391,28 @@ class FlashCardsService
             return $row;
         });
 
+        $focusedUserId = null;
+        if ($matchingUserIds !== null && $matchingUserIds->count() === 1) {
+            $focusedUserId = (int) $matchingUserIds->first();
+        } elseif ($search !== '' && method_exists($usersPaginator, 'total') && (int) $usersPaginator->total() === 1) {
+            $focusedRow = collect($usersPaginator->items())->first();
+            $focusedUserId = (int) ($focusedRow->user_id ?? 0);
+        }
+
+        $focusedUser = null;
+        $focusedUserProgress = null;
+        if ($focusedUserId > 0) {
+            $focusedUserRow = $this->getUsersByIds(collect([$focusedUserId]))->get($focusedUserId);
+            $focusedUser = [
+                'id' => $focusedUserId,
+                'label' => $focusedUserRow
+                    ? trim((string) (($focusedUserRow->username ?? '') !== '' ? $focusedUserRow->username : ($focusedUserRow->name ?? '')))
+                    : ('User #' . $focusedUserId),
+                'name' => $focusedUserRow ? trim((string) ($focusedUserRow->name ?? '')) : null,
+            ];
+            $focusedUserProgress = $this->getV2ProgressForUser($focusedUserId);
+        }
+
         return [
             'filters' => [
                 'q' => $search,
@@ -399,6 +421,8 @@ class FlashCardsService
             'summary' => $summary,
             'users' => $usersPaginator,
             'attempts' => $attemptsPaginator,
+            'focusedUser' => $focusedUser,
+            'focusedUserProgress' => $focusedUserProgress,
         ];
     }
 

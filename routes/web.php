@@ -1188,6 +1188,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/users/{id}/subscription/grant-pro', [UserSubscriptionController::class, 'grantPro'])
         ->where('id', '[0-9]+')
         ->name('users.subscription.grant-pro');
+    Route::post('/users/{id}/subscription/expire-current', [UserSubscriptionController::class, 'expireCurrent'])
+        ->where('id', '[0-9]+')
+        ->name('users.subscription.expire-current');
 
     Route::get('/users/{id}', [UserDetailController::class, 'show'])
         ->where('id', '[0-9]+');

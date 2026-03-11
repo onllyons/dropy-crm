@@ -60,4 +60,51 @@ class UserSubscriptionController extends Controller
             return back()->with('error', $e->getMessage());
         }
     }
+
+    public function expireCurrent(Request $request, int $id): RedirectResponse
+    {
+        try {
+            $userExists = DB::table('users')
+                ->where('id', $id)
+                ->exists();
+
+            if (!$userExists) {
+                return back()->with('error', "User #{$id} not found.");
+            }
+
+            $latestRow = DB::connection('mysql')
+                ->table('subscriptionManagement')
+                ->where('user_id', $id)
+                ->orderByDesc('id')
+                ->first(['id']);
+
+            if (!$latestRow) {
+                return back()->with('error', "No subscriptionManagement row found for user #{$id}.");
+            }
+
+            $expiredAt = time() - 3600;
+
+            DB::connection('mysql')
+                ->table('subscriptionManagement')
+                ->where('id', $latestRow->id)
+                ->update([
+                    'subscribe_expire' => $expiredAt,
+                ]);
+
+            $hasActiveGift = DB::connection('mysql')
+                ->table('subscriptionManagementGift')
+                ->where('user_id', $id)
+                ->where('subscribe_expire', '>', time())
+                ->exists();
+
+            $message = "Current subscription expired. Row #{$latestRow->id} updated.";
+            if ($hasActiveGift) {
+                $message .= ' Warning: active gift subscription still exists.';
+            }
+
+            return back()->with('status', $message);
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+    }
 }

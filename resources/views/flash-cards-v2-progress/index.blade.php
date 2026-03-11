@@ -23,8 +23,21 @@
                         $focusedUserProgress = $progress['focusedUserProgress'] ?? null;
                         $focusedSummary = $focusedUserProgress['summary'] ?? [];
                         $focusedModuleProgress = $focusedUserProgress['moduleProgress'] ?? collect();
+                        $focusedRecentAttempts = $focusedUserProgress['recentAttempts'] ?? collect();
                         $userRows = method_exists($users, 'items') ? $users->items() : $users;
                         $attemptRows = method_exists($attempts, 'items') ? $attempts->items() : $attempts;
+                        $formatEuropeanDateTime = function ($value, $fallback = '-') {
+                            $stringValue = trim((string) $value);
+                            if ($stringValue === '') {
+                                return $fallback;
+                            }
+
+                            try {
+                                return \Illuminate\Support\Carbon::parse($stringValue)->format('d.m.Y H:i:s');
+                            } catch (\Throwable $e) {
+                                return $stringValue;
+                            }
+                        };
                         $formatDuration = function ($seconds) {
                             $total = max(0, (int) $seconds);
                             $hours = intdiv($total, 3600);
@@ -182,7 +195,7 @@
                                 <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                     <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">Tracked time</div>
                                     <div class="mt-2 text-xl font-semibold text-slate-800">{{ $formatDuration($focusedSummary['total_time_seconds'] ?? 0) }}</div>
-                                    <div class="mt-1 text-xs text-slate-500">{{ trim((string) ($focusedSummary['last_activity_at'] ?? '')) !== '' ? $focusedSummary['last_activity_at'] : 'No activity yet' }}</div>
+                                    <div class="mt-1 text-xs text-slate-500">{{ trim((string) ($focusedSummary['last_activity_at'] ?? '')) !== '' ? $formatEuropeanDateTime($focusedSummary['last_activity_at']) : 'No activity yet' }}</div>
                                 </div>
                             </div>
 
@@ -286,7 +299,7 @@
                                                 </td>
                                                 <td class="px-4 py-3 text-slate-700">{{ $formatDuration($row->total_time_seconds ?? 0) }}</td>
                                                 <td class="px-4 py-3 text-slate-700">
-                                                    {{ trim((string) ($row->last_activity_at ?? '')) !== '' ? $row->last_activity_at : '-' }}
+                                                    {{ $formatEuropeanDateTime($row->last_activity_at ?? null) }}
                                                 </td>
                                             </tr>
                                         @empty
@@ -306,103 +319,280 @@
                         </section>
                     @endif
 
-                    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <div>
-                            <h2 class="text-lg font-semibold text-slate-900">Latest Attempts</h2>
-                            <p class="mt-1 text-sm text-slate-600">Ultimele încercări filtrate după user/status.</p>
-                        </div>
-
-                        <div class="mt-4 space-y-3">
-                            @forelse ($attemptRows as $row)
-                                @php
-                                    $isCompleted = (string) ($row->status ?? '') === 'completed';
-                                    $isInProgress = (string) ($row->status ?? '') === 'in_progress';
-                                    $statusClass = $isCompleted
-                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                        : ($isInProgress ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-50 text-slate-700');
-                                @endphp
-                                <article class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-                                    <div class="flex flex-wrap items-start justify-between gap-3">
-                                        <div>
-                                            <div class="flex flex-wrap items-center gap-2">
-                                                <a href="{{ url('/users/' . (int) ($row->user_id ?? 0)) }}" class="font-semibold text-slate-800 hover:text-sky-700 hover:underline">
-                                                    {{ trim((string) ($row->user_label ?? '')) !== '' ? $row->user_label : ('User #' . (int) ($row->user_id ?? 0)) }}
-                                                </a>
-                                                <span class="rounded-full border px-2.5 py-1 text-xs font-semibold {{ $statusClass }}">
-                                                    {{ trim((string) ($row->status ?? '')) !== '' ? $row->status : 'unknown' }}
-                                                </span>
-                                                <span class="text-xs text-slate-500">Attempt #{{ (int) ($row->attempt_number ?? 0) }}</span>
-                                            </div>
-                                            <div class="mt-2 text-sm text-slate-700">
-                                                <a href="{{ route('flash-cards.v2.lesson', ['lessonId' => (int) ($row->lesson_id ?? 0)]) }}" class="font-semibold hover:text-sky-700 hover:underline">
-                                                    {{ trim((string) ($row->lesson_title ?? '')) !== '' ? $row->lesson_title : ('Lesson #' . (int) ($row->lesson_id ?? 0)) }}
-                                                </a>
-                                                @if ((int) ($row->module_id ?? 0) > 0)
-                                                    <span class="text-slate-400">·</span>
-                                                    <a href="{{ route('flash-cards.v2.module', ['moduleId' => (int) ($row->module_id ?? 0)]) }}" class="hover:text-sky-700 hover:underline">
-                                                        {{ trim((string) ($row->module_title ?? '')) !== '' ? $row->module_title : ('Module #' . (int) ($row->module_id ?? 0)) }}
-                                                    </a>
-                                                @endif
-                                            </div>
-                                        </div>
-
-                                        <div class="text-right text-xs text-slate-500">
-                                            <div>ID: {{ (int) ($row->id ?? 0) }}</div>
-                                            <div class="mt-1">Updated: {{ trim((string) ($row->updated_at ?? '')) !== '' ? $row->updated_at : '-' }}</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-                                        <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                            <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Lesson time</div>
-                                            <div class="mt-1 text-sm font-semibold text-slate-800">{{ $formatDuration($row->lesson_time_seconds ?? 0) }}</div>
-                                        </div>
-                                        <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                            <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quiz time</div>
-                                            <div class="mt-1 text-sm font-semibold text-slate-800">{{ $formatDuration($row->quiz_time_seconds ?? 0) }}</div>
-                                        </div>
-                                        <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                            <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total time</div>
-                                            <div class="mt-1 text-sm font-semibold text-slate-800">{{ $formatDuration($row->total_time_seconds ?? 0) }}</div>
-                                        </div>
-                                        <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                            <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quiz score</div>
-                                            <div class="mt-1 text-sm font-semibold text-slate-800">
-                                                {{ number_format((int) ($row->answers_correct ?? 0)) }}/{{ number_format((int) ($row->questions_total ?? 0)) }}
-                                            </div>
-                                        </div>
-                                        <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                            <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Accuracy</div>
-                                            <div class="mt-1 text-sm font-semibold text-slate-800">
-                                                @if ($row->accuracy_percent !== null)
-                                                    {{ number_format((float) $row->accuracy_percent, 1) }}%
-                                                @else
-                                                    -
-                                                @endif
-                                            </div>
-                                        </div>
-                                        <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                            <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Started / Completed</div>
-                                            <div class="mt-1 text-sm text-slate-700">
-                                                <div>{{ trim((string) ($row->started_at ?? '')) !== '' ? $row->started_at : '-' }}</div>
-                                                <div class="mt-1 text-xs text-slate-500">{{ trim((string) ($row->completed_at ?? '')) !== '' ? $row->completed_at : 'Not completed' }}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </article>
-                            @empty
-                                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-                                    No attempts found for current filters.
-                                </div>
-                            @endforelse
-                        </div>
-
-                        @if (method_exists($attempts, 'links'))
-                            <div class="mt-4">
-                                {{ $attempts->links() }}
+                    @if (is_array($focusedUser) && is_array($focusedUserProgress))
+                        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                            <div>
+                                <h2 class="text-lg font-semibold text-slate-900">Detailed Attempts For Focused User</h2>
+                                <p class="mt-1 text-sm text-slate-600">Quiz context din <code>quiz_data</code>, plus pașii individuali pentru ultimele încercări.</p>
                             </div>
-                        @endif
-                    </section>
+
+                            <div class="mt-4 space-y-4">
+                                @forelse ($focusedRecentAttempts as $row)
+                                    @php
+                                        $isCompleted = (string) ($row->status ?? '') === 'completed';
+                                        $isInProgress = (string) ($row->status ?? '') === 'in_progress';
+                                        $statusClass = $isCompleted
+                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                            : ($isInProgress ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-50 text-slate-700');
+                                        $quizSummary = is_array($row->quiz_data_summary ?? null) ? $row->quiz_data_summary : [];
+                                        $quizSteps = $row->quiz_data_steps ?? collect();
+                                        $quizTypes = collect($quizSummary['quiz_types'] ?? [])->filter()->implode(', ');
+                                        $hasQuizData = trim((string) ($row->quiz_data ?? '')) !== '';
+                                    @endphp
+                                    <article class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                                        <div class="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <a href="{{ route('flash-cards.v2.lesson', ['lessonId' => (int) ($row->lesson_id ?? 0)]) }}" class="font-semibold text-slate-800 hover:text-sky-700 hover:underline">
+                                                        {{ trim((string) ($row->lesson_title ?? '')) !== '' ? $row->lesson_title : ('Lesson #' . (int) ($row->lesson_id ?? 0)) }}
+                                                    </a>
+                                                    <span class="rounded-full border px-2.5 py-1 text-xs font-semibold {{ $statusClass }}">
+                                                        {{ trim((string) ($row->status ?? '')) !== '' ? $row->status : 'unknown' }}
+                                                    </span>
+                                                    <span class="text-xs text-slate-500">Attempt #{{ (int) ($row->attempt_number ?? 0) }}</span>
+                                                </div>
+                                                <div class="mt-2 text-sm text-slate-700">
+                                                    @if ((int) ($row->module_id ?? 0) > 0)
+                                                        <a href="{{ route('flash-cards.v2.module', ['moduleId' => (int) ($row->module_id ?? 0)]) }}" class="hover:text-sky-700 hover:underline">
+                                                            {{ trim((string) ($row->module_title ?? '')) !== '' ? $row->module_title : ('Module #' . (int) ($row->module_id ?? 0)) }}
+                                                        </a>
+                                                    @else
+                                                        <span>-</span>
+                                                    @endif
+                                                    @if (trim((string) ($row->lesson_level ?? '')) !== '')
+                                                        <span class="text-slate-400">·</span> {{ $row->lesson_level }}
+                                                    @endif
+                                                    @if (trim((string) ($row->lesson_type ?? '')) !== '')
+                                                        <span class="text-slate-400">·</span> {{ $row->lesson_type }}
+                                                    @endif
+                                                </div>
+                                            </div>
+
+                                            <div class="text-right text-xs text-slate-500">
+                                                <div>ID: {{ (int) ($row->id ?? 0) }}</div>
+                                                <div class="mt-1">Updated: {{ $formatEuropeanDateTime($row->updated_at ?? null) }}</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Lesson time</div>
+                                                <div class="mt-1 text-sm font-semibold text-slate-800">{{ $formatDuration($row->lesson_time_seconds ?? 0) }}</div>
+                                            </div>
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quiz time</div>
+                                                <div class="mt-1 text-sm font-semibold text-slate-800">{{ $formatDuration($row->quiz_time_seconds ?? 0) }}</div>
+                                            </div>
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quiz score</div>
+                                                <div class="mt-1 text-sm font-semibold text-slate-800">
+                                                    {{ number_format((int) ($row->answers_correct ?? 0)) }}/{{ number_format((int) ($row->questions_total ?? 0)) }}
+                                                </div>
+                                            </div>
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Accuracy</div>
+                                                <div class="mt-1 text-sm font-semibold text-slate-800">
+                                                    @if (($row->accuracy_percent ?? null) !== null)
+                                                        {{ number_format((float) $row->accuracy_percent, 1) }}%
+                                                    @else
+                                                        -
+                                                    @endif
+                                                </div>
+                                            </div>
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Started</div>
+                                                <div class="mt-1 text-sm text-slate-700">{{ $formatEuropeanDateTime($row->started_at ?? null) }}</div>
+                                            </div>
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Completed</div>
+                                                <div class="mt-1 text-sm text-slate-700">{{ trim((string) ($row->completed_at ?? '')) !== '' ? $formatEuropeanDateTime($row->completed_at) : 'Not completed' }}</div>
+                                            </div>
+                                        </div>
+
+                                        @if ($hasQuizData)
+                                            <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                                                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                                                    <div>
+                                                        <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Steps</div>
+                                                        <div class="mt-1 text-sm font-semibold text-slate-800">{{ number_format((int) ($quizSummary['steps_total'] ?? 0)) }}</div>
+                                                        <div class="mt-1 text-xs text-slate-500">done {{ number_format((int) ($quizSummary['done_steps'] ?? 0)) }} / total {{ number_format((int) ($quizSummary['total_steps'] ?? 0)) }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Correct / Incorrect</div>
+                                                        <div class="mt-1 text-sm font-semibold text-slate-800">{{ number_format((int) ($quizSummary['correct_steps'] ?? 0)) }} / {{ number_format((int) ($quizSummary['incorrect_steps'] ?? 0)) }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Hints used</div>
+                                                        <div class="mt-1 text-sm font-semibold text-slate-800">{{ number_format((int) ($quizSummary['hint_used_steps'] ?? 0)) }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quiz types</div>
+                                                        <div class="mt-1 text-sm text-slate-700">{{ $quizTypes !== '' ? $quizTypes : '-' }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Client rev / version</div>
+                                                        <div class="mt-1 text-sm text-slate-700">{{ ($quizSummary['client_rev'] ?? null) !== null ? (int) $quizSummary['client_rev'] : '-' }} / {{ ($quizSummary['version'] ?? null) !== null ? (int) $quizSummary['version'] : '-' }}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quiz updated</div>
+                                                        <div class="mt-1 text-sm text-slate-700">{{ $formatEuropeanDateTime($quizSummary['updated_at_label'] ?? null) }}</div>
+                                                    </div>
+                                                </div>
+
+                                                @if (($row->quiz_data_error ?? null) !== null)
+                                                    <div class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                                        {{ $row->quiz_data_error }}
+                                                    </div>
+                                                @elseif (count($quizSteps) > 0)
+                                                    <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+                                                        <table class="min-w-full text-sm">
+                                                            <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                                                                <tr>
+                                                                    <th class="px-3 py-2 text-left">#</th>
+                                                                    <th class="px-3 py-2 text-left">Item</th>
+                                                                    <th class="px-3 py-2 text-left">Quiz type</th>
+                                                                    <th class="px-3 py-2 text-left">Result</th>
+                                                                    <th class="px-3 py-2 text-left">Hint</th>
+                                                                    <th class="px-3 py-2 text-left">Time</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody class="divide-y divide-slate-100 bg-white">
+                                                                @foreach ($quizSteps as $step)
+                                                                    <tr>
+                                                                        <td class="px-3 py-2 text-slate-700">{{ (int) ($step->index ?? 0) }}</td>
+                                                                        <td class="px-3 py-2 text-slate-700">{{ (int) ($step->item_id ?? 0) > 0 ? ('#' . (int) ($step->item_id ?? 0)) : '-' }}</td>
+                                                                        <td class="px-3 py-2 text-slate-700">{{ trim((string) ($step->quiz_type ?? '')) !== '' ? $step->quiz_type : '-' }}</td>
+                                                                        <td class="px-3 py-2">
+                                                                            <span class="rounded-full border px-2 py-0.5 text-xs font-semibold {{ (string) ($step->result ?? '') === 'correct' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : ((string) ($step->result ?? '') === 'incorrect' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-200 bg-slate-50 text-slate-700') }}">
+                                                                                {{ trim((string) ($step->result ?? '')) !== '' ? $step->result : '-' }}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td class="px-3 py-2 text-slate-700">{{ !empty($step->use_hint) ? 'Yes' : 'No' }}</td>
+                                                                        <td class="px-3 py-2 text-slate-700">{{ $formatEuropeanDateTime($step->timestamp_label ?? null) }}</td>
+                                                                    </tr>
+                                                                @endforeach
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                @endif
+
+                                                <details class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                                    <summary class="cursor-pointer text-sm font-semibold text-slate-700">Raw quiz_data JSON</summary>
+                                                    <pre class="mt-3 overflow-x-auto whitespace-pre-wrap rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{{ $row->quiz_data_pretty ?? trim((string) ($row->quiz_data ?? '')) }}</pre>
+                                                </details>
+                                            </div>
+                                        @else
+                                            <div class="mt-4 rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
+                                                No quiz_data saved for this attempt.
+                                            </div>
+                                        @endif
+                                    </article>
+                                @empty
+                                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                                        No attempts found for this user.
+                                    </div>
+                                @endforelse
+                            </div>
+                        </section>
+                    @else
+                        <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                            <div>
+                                <h2 class="text-lg font-semibold text-slate-900">Latest Attempts</h2>
+                                <p class="mt-1 text-sm text-slate-600">Ultimele încercări filtrate după user/status.</p>
+                            </div>
+
+                            <div class="mt-4 space-y-3">
+                                @forelse ($attemptRows as $row)
+                                    @php
+                                        $isCompleted = (string) ($row->status ?? '') === 'completed';
+                                        $isInProgress = (string) ($row->status ?? '') === 'in_progress';
+                                        $statusClass = $isCompleted
+                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                            : ($isInProgress ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-50 text-slate-700');
+                                    @endphp
+                                    <article class="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                                        <div class="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <a href="{{ url('/users/' . (int) ($row->user_id ?? 0)) }}" class="font-semibold text-slate-800 hover:text-sky-700 hover:underline">
+                                                        {{ trim((string) ($row->user_label ?? '')) !== '' ? $row->user_label : ('User #' . (int) ($row->user_id ?? 0)) }}
+                                                    </a>
+                                                    <span class="rounded-full border px-2.5 py-1 text-xs font-semibold {{ $statusClass }}">
+                                                        {{ trim((string) ($row->status ?? '')) !== '' ? $row->status : 'unknown' }}
+                                                    </span>
+                                                    <span class="text-xs text-slate-500">Attempt #{{ (int) ($row->attempt_number ?? 0) }}</span>
+                                                </div>
+                                                <div class="mt-2 text-sm text-slate-700">
+                                                    <a href="{{ route('flash-cards.v2.lesson', ['lessonId' => (int) ($row->lesson_id ?? 0)]) }}" class="font-semibold hover:text-sky-700 hover:underline">
+                                                        {{ trim((string) ($row->lesson_title ?? '')) !== '' ? $row->lesson_title : ('Lesson #' . (int) ($row->lesson_id ?? 0)) }}
+                                                    </a>
+                                                    @if ((int) ($row->module_id ?? 0) > 0)
+                                                        <span class="text-slate-400">·</span>
+                                                        <a href="{{ route('flash-cards.v2.module', ['moduleId' => (int) ($row->module_id ?? 0)]) }}" class="hover:text-sky-700 hover:underline">
+                                                            {{ trim((string) ($row->module_title ?? '')) !== '' ? $row->module_title : ('Module #' . (int) ($row->module_id ?? 0)) }}
+                                                        </a>
+                                                    @endif
+                                                </div>
+                                            </div>
+
+                                            <div class="text-right text-xs text-slate-500">
+                                                <div>ID: {{ (int) ($row->id ?? 0) }}</div>
+                                                <div class="mt-1">Updated: {{ $formatEuropeanDateTime($row->updated_at ?? null) }}</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Lesson time</div>
+                                                <div class="mt-1 text-sm font-semibold text-slate-800">{{ $formatDuration($row->lesson_time_seconds ?? 0) }}</div>
+                                            </div>
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quiz time</div>
+                                                <div class="mt-1 text-sm font-semibold text-slate-800">{{ $formatDuration($row->quiz_time_seconds ?? 0) }}</div>
+                                            </div>
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total time</div>
+                                                <div class="mt-1 text-sm font-semibold text-slate-800">{{ $formatDuration($row->total_time_seconds ?? 0) }}</div>
+                                            </div>
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quiz score</div>
+                                                <div class="mt-1 text-sm font-semibold text-slate-800">
+                                                    {{ number_format((int) ($row->answers_correct ?? 0)) }}/{{ number_format((int) ($row->questions_total ?? 0)) }}
+                                                </div>
+                                            </div>
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Accuracy</div>
+                                                <div class="mt-1 text-sm font-semibold text-slate-800">
+                                                    @if ($row->accuracy_percent !== null)
+                                                        {{ number_format((float) $row->accuracy_percent, 1) }}%
+                                                    @else
+                                                        -
+                                                    @endif
+                                                </div>
+                                            </div>
+                                            <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                                <div class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Started / Completed</div>
+                                                <div class="mt-1 text-sm text-slate-700">
+                                                    <div>{{ $formatEuropeanDateTime($row->started_at ?? null) }}</div>
+                                                    <div class="mt-1 text-xs text-slate-500">{{ trim((string) ($row->completed_at ?? '')) !== '' ? $formatEuropeanDateTime($row->completed_at) : 'Not completed' }}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </article>
+                                @empty
+                                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                                        No attempts found for current filters.
+                                    </div>
+                                @endforelse
+                            </div>
+
+                            @if (method_exists($attempts, 'links'))
+                                <div class="mt-4">
+                                    {{ $attempts->links() }}
+                                </div>
+                            @endif
+                        </section>
+                    @endif
                 </main>
             </div>
         </div>

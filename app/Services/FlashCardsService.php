@@ -527,6 +527,7 @@ class FlashCardsService
                 'a.questions_total',
                 'a.answers_correct',
                 'a.answers_wrong',
+                'a.quiz_data',
                 'a.created_at',
                 'a.updated_at',
                 'l.title as lesson_title',
@@ -540,14 +541,7 @@ class FlashCardsService
             ->limit(10)
             ->get()
             ->map(function ($row) {
-                $questionsTotal = (int) ($row->questions_total ?? 0);
-                $answersCorrect = (int) ($row->answers_correct ?? 0);
-                $row->accuracy_percent = $questionsTotal > 0
-                    ? round(($answersCorrect / $questionsTotal) * 100, 1)
-                    : null;
-                $row->total_time_seconds = (int) ($row->lesson_time_seconds ?? 0) + (int) ($row->quiz_time_seconds ?? 0);
-
-                return $row;
+                return $this->hydrateV2AttemptRow($row, true);
             });
 
         return [
@@ -556,6 +550,91 @@ class FlashCardsService
             'recentAttempts' => $recentAttempts,
             'error' => null,
         ];
+    }
+
+    private function hydrateV2AttemptRow($row, bool $includeQuizData = false)
+    {
+        $questionsTotal = (int) ($row->questions_total ?? 0);
+        $answersCorrect = (int) ($row->answers_correct ?? 0);
+        $row->accuracy_percent = $questionsTotal > 0
+            ? round(($answersCorrect / $questionsTotal) * 100, 1)
+            : null;
+        $row->total_time_seconds = (int) ($row->lesson_time_seconds ?? 0) + (int) ($row->quiz_time_seconds ?? 0);
+
+        if (!$includeQuizData) {
+            return $row;
+        }
+
+        $row->quiz_data_summary = [];
+        $row->quiz_data_steps = collect();
+        $row->quiz_data_pretty = null;
+        $row->quiz_data_error = null;
+
+        $rawQuizData = trim((string) ($row->quiz_data ?? ''));
+        if ($rawQuizData === '') {
+            return $row;
+        }
+
+        $decodedQuizData = json_decode($rawQuizData, true);
+        if (!is_array($decodedQuizData)) {
+            $row->quiz_data_error = 'Invalid JSON';
+            $row->quiz_data_pretty = $rawQuizData;
+
+            return $row;
+        }
+
+        $steps = collect(isset($decodedQuizData['steps']) && is_array($decodedQuizData['steps']) ? $decodedQuizData['steps'] : [])
+            ->values()
+            ->map(function ($step, $index) {
+                $step = is_array($step) ? $step : [];
+                $timestamp = isset($step['timestamp']) ? (int) $step['timestamp'] : 0;
+
+                return (object) [
+                    'index' => $index + 1,
+                    'item_id' => isset($step['item_id']) ? (int) $step['item_id'] : 0,
+                    'step_id' => trim((string) ($step['step_id'] ?? '')),
+                    'quiz_type' => trim((string) ($step['quiz_type'] ?? '')),
+                    'result' => trim((string) ($step['result'] ?? '')),
+                    'use_hint' => !empty($step['use_hint']),
+                    'timestamp' => $timestamp,
+                    'timestamp_label' => $timestamp > 0 ? date('Y-m-d H:i:s', (int) floor($timestamp / 1000)) : null,
+                ];
+            });
+
+        $row->quiz_data_steps = $steps;
+        $row->quiz_data_summary = [
+            'version' => isset($decodedQuizData['version']) ? (int) $decodedQuizData['version'] : null,
+            'lesson_index' => isset($decodedQuizData['lesson_index']) ? (int) $decodedQuizData['lesson_index'] : null,
+            'current_index' => isset($decodedQuizData['current_index']) ? (int) $decodedQuizData['current_index'] : null,
+            'done_steps' => isset($decodedQuizData['done_steps']) ? (int) $decodedQuizData['done_steps'] : null,
+            'total_steps' => isset($decodedQuizData['total_steps']) ? (int) $decodedQuizData['total_steps'] : $steps->count(),
+            'show_quiz' => array_key_exists('show_quiz', $decodedQuizData) ? (bool) $decodedQuizData['show_quiz'] : null,
+            'client_rev' => isset($decodedQuizData['client_rev']) ? (int) $decodedQuizData['client_rev'] : null,
+            'updated_at' => isset($decodedQuizData['updated_at']) ? (int) $decodedQuizData['updated_at'] : null,
+            'updated_at_label' => isset($decodedQuizData['updated_at']) && (int) $decodedQuizData['updated_at'] > 0
+                ? date('Y-m-d H:i:s', (int) floor(((int) $decodedQuizData['updated_at']) / 1000))
+                : null,
+            'steps_total' => $steps->count(),
+            'correct_steps' => $steps->filter(function ($step) {
+                return $step->result === 'correct';
+            })->count(),
+            'incorrect_steps' => $steps->filter(function ($step) {
+                return $step->result === 'incorrect';
+            })->count(),
+            'hint_used_steps' => $steps->filter(function ($step) {
+                return $step->use_hint;
+            })->count(),
+            'quiz_types' => $steps
+                ->pluck('quiz_type')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all(),
+        ];
+        $prettyQuizData = json_encode($decodedQuizData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $row->quiz_data_pretty = is_string($prettyQuizData) ? $prettyQuizData : $rawQuizData;
+
+        return $row;
     }
 
     public function getV2LessonDetails(int $lessonId): array
